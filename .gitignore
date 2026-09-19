@@ -16,4 +16,5 @@ results/*
 !results/golden/**
 assets/*.mp4
 assets/videomme/
+.vscode/
 .DS_Store
