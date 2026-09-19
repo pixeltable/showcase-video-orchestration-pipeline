@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pixeltable video orchestration — showcase</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222c;
+      --text: #e8eef4;
+      --muted: #9aabbc;
+      --accent: #3d9cf0;
+      --border: #2a3542;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #1c3a55 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #243018 0%, transparent 50%),
+        var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 1rem;
+    }
+    h1 {
+      font-family: "IBM Plex Serif", Georgia, serif;
+      font-weight: 600;
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      margin: 0 0 0.5rem;
+      letter-spacing: -0.02em;
+    }
+    .lede {
+      color: var(--muted);
+      max-width: 46rem;
+      line-height: 1.5;
+      margin: 0;
+    }
+    .meta {
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .grid {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1rem 1.5rem 3rem;
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    @media (max-width: 960px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem 1.2rem;
+      min-height: 18rem;
+      animation: rise 0.55s ease both;
+    }
+    .card:nth-child(2) { animation-delay: 0.08s; }
+    .card:nth-child(3) { animation-delay: 0.16s; }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: none; }
+    }
+    h2 {
+      font-size: 1rem;
+      margin: 0 0 0.35rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .cost {
+      margin: 0 0 0.75rem;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 0.78rem;
+      line-height: 1.45;
+      color: var(--text);
+      max-height: 28rem;
+      overflow: auto;
+    }
+    footer {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 1.5rem 2.5rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Own the stack</h1>
+    <p class="lede">
+      Same clip, same question — native Gemini vs modular orchestration vs open source.
+      Generated from <code>results/golden/</code>.
+    </p>
+    <p class="meta">Query: Summarize the main activities, speakers, and visual events in this video.<br />Duration: 255.0s · tag fair_v1_nova_pro</p>
+  </header>
+  <section class="grid">
+    <article class="card"><h2>Path 1 — Native Gemini</h2><p class="cost">$0.114</p><pre>This video clip from &quot;The Pursuit of Happyness&quot; features Chris Gardner (Will Smith) attending a job interview with several executives, most notably Jay.
+
+**Main Activities:**
+1.  **Arrival and Explanation:** Chris, visibly sweaty and disheveled, rushes into the professional office and then into a conference room, where several suited men are waiting for his interview. He immediately addresses his appearance, confessing he was arrested for unpaid parking tickets and had to run from the police station after painting his apartment, thus appearing in his current state.
+2.  **Interview Questions:** The interviewers probe Chris about his background, his determination (as vouched for by Jay), and his intelligence. Chris confidently asserts his ability to find answers even if he doesn&#x27;t know them initially.
+3.  **Humorous Exchange:** The lead interviewer, Jay, poses a hypothetical question: &quot;What would you say if a guy walked in for an interview without a shirt on... and I hired him?&quot; After a pause, Chris cleverly replies, &quot;He must&#x27;ve had on some really nice pants,&quot; which makes the entire panel erupt in laughter.
+4.  **Job Offer Discussion:** After the interview, as Chris is leaving, Jay…</pre></article><article class="card"><h2>Path 2 — Orchestrated Gemini</h2><p class="cost">$0.039</p><pre>The video details a pivotal job interview and its immediate aftermath, revolving around Chris Gardner&#x27;s determined pursuit of a position as a stockbroker trainee despite challenging circumstances. The narrative unfolds through a series of intense dialogues and observations within a professional office environment.
+
+**Main Activities:**
+1.  Chris Gardner undergoes a high-stakes job interview for a stockbroker trainee position, explaining his unconventional attire.
+2.  The interviewers question Chris about his background, determination, and ability to learn the business.
+3.  A comedic exchange regarding a hypothetical interviewee without a shirt lightens the mood.
+4.  Chris is informally offered the trainee position, leading to a moment of unexpected hesitation due to its unpaid nature.
+5.  An intense discussion ensues between one of the interviewers and his colleague about securing Chris&#x27;s acceptance.
+
+**Speakers:**
+*   **Speaker 1:** An interviewer, likely a partner or senior manager, who primarily questions Chris and later discusses Chris with Jay.
+*   **Speaker 2:** Chris Gardner, the determined job applicant.
+*   **Speaker 3:** Jay, another interviewer or colleague of Speaker 1…</pre></article><article class="card"><h2>Path 3 — Open source</h2><p class="cost">$0.000</p><pre>**Main Activities:**
+1. Chris Gardner arrives at the office, dressed in a casual outfit and explaining his presence.
+2. A discussion about Gardner&#x27;s background and qualities begins with colleagues expressing admiration for his earnestness and diligence.
+3. The conversation shifts to Gardner’s recent arrest due to failure to pay parking tickets.
+4. Colleagues discuss Gardner’s determination and intelligence, noting he has been seen multiple times at the office.
+5. Gardner shares a story about being first in class during school days and in military training.
+6. The video ends with a humorous exchange where Jay offers to fill Gardner&#x27;s spot for an interview.
+
+**Speakers:**
+- SPEAKER_00: Chris Gardner
+- SPEAKER_01: Jay (a colleague)
+- SPEAKER_02: Mr. Twistle (likely another colleague)
+
+**Visual Events:**
+- [5.32s - 16.3s] OSS-VLM shows a man with short, dark hair and a mustache in a professional setting.
+- [15.92s - 28.7s] A man standing in a room speaks or reacts to something off-camera.
+- [26.56s - 48.8s] Two men seated at a conference table discuss, with one speaking and gesturing.
+- [37.7s - 59.6s] A man stands in a modern office setting explaining his situation.
+- [57.0s - 122.16…</pre></article>
+  </section>
+  <footer>
+    Regenerate with <code>python scripts/render_showcase.py</code>.
+    Full answers: <code>results/golden/REPORT.md</code>.
+  </footer>
+</body>
+</html>

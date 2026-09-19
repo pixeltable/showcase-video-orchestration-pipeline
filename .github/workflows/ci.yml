@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package (dev + demo)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,demo]"
+      - name: Pixeltable version
+        run: python -c "import pixeltable as pxt; assert pxt.__version__.startswith('0.7.'), pxt.__version__"
+      - name: Ruff
+        run: ruff check src tests scripts/render_showcase.py
+      - name: Pytest
+        run: pytest -q
+      - name: CLI help smoke
+        run: run-benchmark --help
+      - name: Render showcase HTML
+        run: python scripts/render_showcase.py

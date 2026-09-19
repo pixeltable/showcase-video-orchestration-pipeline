@@ -1,0 +1,19 @@
+{
+  "query": "Summarize the main activities, speakers, and visual events in this video.",
+  "video_duration_sec": 254.96,
+  "keyframe_count": 24,
+  "gemini_synthesis_frame_count": 16,
+  "audio_chunk_count": 1,
+  "native_cost": 0.1138305,
+  "gemini_orchestrated_total": 0.0386295,
+  "gemini_vision_track_cost": 0.017240999999999996,
+  "gemini_asr_cost": 0.0131385,
+  "gemini_synthesis_cost": 0.00825,
+  "oss_cost": 0.0,
+  "cost_delta_native_vs_gemini": 0.075201,
+  "cost_note": "Heuristic estimates; native/synthesis/vision use usage_metadata when present. fal_cost is $0.01 per 5s on input capped at 120s (API max ~122s); nova_cost uses Bedrock token rates (default Nova Pro). vision_track sums all vision API frames; synthesis uses the capped frame context.",
+  "fal_cost": 0.24,
+  "cost_delta_native_vs_fal": -0.1261695,
+  "nova_cost": 0.060018400000000006,
+  "cost_delta_native_vs_nova": 0.053812099999999995
+}

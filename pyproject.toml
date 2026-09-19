@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video-benchmark"
+version = "0.1.0"
+description = "Pixeltable showcase: native vs modular vs OSS video understanding (pixeltable-video-orchestration)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "pixeltable==0.7.8",
+    "google-genai>=1.0",
+    "pandas>=2.2.3",
+    "pillow>=10.1",
+    "numpy>=2.0",
+    "torch>=2.0",
+    "openai-whisper>=20231117",
+    "huggingface_hub>=0.23",
+    "scenedetect>=0.6",
+]
+
+[project.optional-dependencies]
+# Paths 1–2 (Gemini): base install is enough; this alias documents the showcase recipe.
+demo = []
+# Path 3 ASR diarization; also install llama-cpp-python separately for local VLM/synth.
+oss = ["whisperx>=3.1"]
+analytics = ["jupyter>=1.0", "ipykernel>=6.0", "matplotlib>=3.8", "pgvector>=0.4.0"]
+whisperx = ["whisperx>=3.1"]
+fal = ["fal-client>=0.5"]
+bedrock = ["boto3>=1.34"]
+videomme = ["datasets>=2.19", "yt-dlp>=2024.8"]
+dev = ["ruff>=0.4", "pytest>=8.0"]
+
+[project.scripts]
+run-benchmark = "video_benchmark.cli:main"
+run-videomme-dev = "video_benchmark.videomme.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
