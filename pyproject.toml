@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "video-benchmark"
 version = "0.1.0"
-description = "Pixeltable showcase: native vs modular vs OSS video understanding (pixeltable-video-orchestration)"
+description = "Pixeltable showcase: native vs modular vs OSS video understanding (showcase-video-orchestration-pipeline)"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
