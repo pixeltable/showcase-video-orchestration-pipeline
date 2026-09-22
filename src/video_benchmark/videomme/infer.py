@@ -70,6 +70,7 @@ def native_mcq_answer(
     for attempt in range(max_retries + 1):
         try:
             uploaded = client.files.upload(file=str(path))
+            state = None
             for _ in range(60):
                 meta = client.files.get(name=uploaded.name)
                 state = getattr(getattr(meta, 'state', None), 'name', None) or str(
@@ -80,6 +81,8 @@ def native_mcq_answer(
                 if state in {'FAILED', 'FileState.FAILED'}:
                     raise RuntimeError(f'Gemini file upload failed: {state}')
                 time.sleep(2)
+            else:
+                raise RuntimeError(f'Gemini file upload not ACTIVE after wait: {state}')
             response = client.models.generate_content(
                 model=model,
                 contents=[uploaded, prompt],

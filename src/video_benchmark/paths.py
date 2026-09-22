@@ -7,13 +7,20 @@ ALL_PATHS = frozenset({'1', '2', '3', '4', '5'})
 DEFAULT_PATHS = frozenset({'1', '2'})
 
 
-def parse_paths(raw: str | None) -> set[str]:
+def parse_paths(
+    raw: str | None,
+    *,
+    allowed: frozenset[str] = ALL_PATHS,
+    default: frozenset[str] | None = None,
+) -> set[str]:
+    default_paths = set(default if default is not None else DEFAULT_PATHS)
     if not raw or not str(raw).strip():
-        return set(DEFAULT_PATHS)
+        return default_paths
     parts = {p.strip() for p in str(raw).split(',') if p.strip()}
-    unknown = parts - ALL_PATHS
+    unknown = parts - set(allowed)
     if unknown:
-        raise ValueError(f'Unknown paths {unknown}; use subset of 1,2,3,4,5')
+        allowed_label = ','.join(sorted(allowed))
+        raise ValueError(f'Unknown paths {unknown}; use subset of {allowed_label}')
     return parts
 
 

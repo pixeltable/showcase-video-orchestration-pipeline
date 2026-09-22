@@ -40,8 +40,6 @@ def extract_letter(text: str | None) -> str | None:
     letters = _BARE_LETTER.findall(last)
     if len(letters) == 1:
         return letters[0].upper()
-    if letters:
-        return letters[-1].upper()
     return None
 
 
@@ -93,8 +91,11 @@ def mcq_frame_prompt(position_sec: float | None = None) -> str:
 def truncate_context(ctx: str, max_chars: int = 100_000) -> str:
     if len(ctx) <= max_chars:
         return ctx
-    half = max_chars // 2
-    return ctx[:half] + '\n\n...[truncated]...\n\n' + ctx[-half:]
+    marker = '\n\n...[truncated]...\n\n'
+    budget = max(0, max_chars - len(marker))
+    head = budget // 2
+    tail = budget - head
+    return ctx[:head] + marker + ctx[-tail:]
 
 
 def window_shared_context(

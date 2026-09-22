@@ -13,6 +13,13 @@ keyframes: pxt.Table | None = None
 audio_chunks: pxt.Table | None = None
 
 
+def clear_handles() -> None:
+    global video_sources, keyframes, audio_chunks
+    video_sources = None
+    keyframes = None
+    audio_chunks = None
+
+
 def setup_pipeline(
     config: BenchmarkConfig,
     paths: set[str] | None = None,

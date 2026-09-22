@@ -70,3 +70,10 @@ def test_videomme_queries_filter_on_video_id():
     source = inspect.getsource(videomme_pipeline._register_scoped_queries)
     assert 'video_id == video_id' in source
     assert 'keyframes.query' not in source
+    assert 'audio_chunks.query' not in source
+
+
+def test_videomme_parent_uses_mcq_evidence_not_pursuit_rubric():
+    source = inspect.getsource(videomme_schema.build_parent_models)
+    assert 'assemble_mcq_evidence' in source
+    assert 'assemble_benchmark_context' not in source

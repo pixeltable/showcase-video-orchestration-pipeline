@@ -126,6 +126,10 @@ def load_config() -> BenchmarkConfig:
     select_default = '16' if scene_aware else str(frame_cap)
     select_budget = int(os.environ.get('FRAME_SELECT_BUDGET', select_default))
     oss_asr_raw = os.environ.get('OSS_ASR', 'whisperx').strip().lower()
+    if oss_asr_raw not in {'whisper', 'whisperx', 'gemini'}:
+        raise ValueError(
+            f'OSS_ASR must be whisper, whisperx, or gemini (got {oss_asr_raw!r})'
+        )
     hf_token = os.environ.get('HF_TOKEN') or os.environ.get('HUGGING_FACE_HUB_TOKEN')
     if oss_asr_raw == 'whisperx' and not hf_token:
         oss_asr = 'whisper'
@@ -239,4 +243,8 @@ def config_manifest_dict(config: BenchmarkConfig) -> dict:
         'enable_nova': config.enable_nova,
         'nova_model_id': config.nova_model_id,
         'nova_video_s3_uri': config.nova_video_s3_uri or None,
+        'nova_input_usd_per_1m': config.nova_input_usd_per_1m,
+        'nova_output_usd_per_1m': config.nova_output_usd_per_1m,
+        'ollama_host': config.ollama_host,
+        'fal_video_url': config.fal_video_url or None,
     }

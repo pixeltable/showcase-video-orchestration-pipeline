@@ -16,13 +16,15 @@ from video_benchmark.reporting import (
     print_three_way_comparison,
 )
 from video_benchmark.runner import ensure_sample_video, reset_catalog, run_benchmark
+from video_benchmark.schema import CatalogSchemaMismatch
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            'Pixeltable video understanding benchmark '
-            '(native Gemini vs modular vs OSS; optional fal/Nova)'
+            'Pixeltable 0.7.8 TableModel CLI: compare native Gemini video vs '
+            'modular keyframe/ASR orchestration (optional OSS, fal, Nova). '
+            'Not a FastAPI / pxt service.'
         )
     )
     parser.add_argument('--video', type=str, default=None, help='Path to input video file')
@@ -30,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--reset',
         action='store_true',
-        help='Drop and recreate the video_benchmarking catalog',
+        help='Drop and recreate the catalog (required after --paths or schema changes)',
     )
     parser.add_argument(
         '--export',
@@ -87,22 +89,32 @@ def main() -> int:
         reset_catalog()
 
     print(f'Setting up catalog for paths={",".join(sorted(paths))}', flush=True)
-    setup_pipeline(config, paths=paths)
+    try:
+        setup_pipeline(config, paths=paths)
+    except CatalogSchemaMismatch as exc:
+        print(f'Error: {exc}', file=sys.stderr)
+        return 1
 
     video_path = ensure_sample_video(Path(args.video) if args.video else None)
     query = args.query or config.default_query
 
     run_benchmark(config, video_path, query, paths=paths)
-    print_three_way_comparison(config)
+    print_three_way_comparison(config, paths=paths)
 
     export_base = Path(args.export) if args.export else PROJECT_ROOT / 'results'
-    out_dir = export_run(config, export_base, video_path, query)
+    out_dir = export_run(config, export_base, video_path, query, paths=paths)
     print(f'\nExported results to {out_dir}')
 
-    if pipeline_has_keyframes():
+    if pipeline_has_keyframes() and paths & {'2', '3'}:
         comparison_df = build_comparison_dataframe()
-        print('\n=== Frame-level: Gemini vs OSS-VLM per keyframe ===')
-        print(comparison_df.to_string(index=False))
+        if not comparison_df.empty:
+            title = (
+                'Gemini vs OSS-VLM per keyframe'
+                if '3' in paths
+                else 'Gemini keyframes'
+            )
+            print(f'\n=== Frame-level: {title} ===')
+            print(comparison_df.to_string(index=False))
     return 0
 
 

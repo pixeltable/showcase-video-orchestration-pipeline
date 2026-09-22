@@ -46,7 +46,7 @@ flowchart LR
     end
 
     subgraph path5 [Path 5 — Native Nova]
-        P5["Bedrock invoke_model\nNova video"]
+        P5["Bedrock converse\nNova video"]
         P5out["nova_insight"]
     end
 
@@ -109,8 +109,10 @@ With default frame budget, **keyframes attach to `video_sources`**, not `segment
 
 ```bash
 pxt ls video_benchmarking
-pxt rows video_benchmarking/video_sources -n 1 --cols native_insight,gemini_orchestrated_insight,oss_insight
-pxt rows video_benchmarking/keyframes -n 5 --cols global_position_ms,gemini_frame_insight,oss_frame_insight
+pxt rows video_benchmarking/video_sources -n 1 --cols native_insight,gemini_orchestrated_insight
+# Path 3 catalog only:
+# pxt rows video_benchmarking/video_sources -n 1 --cols oss_insight
+# pxt rows video_benchmarking/keyframes -n 5 --cols global_position_ms,gemini_frame_insight,oss_frame_insight
 ```
 
 ---
@@ -121,7 +123,7 @@ pxt rows video_benchmarking/keyframes -n 5 --cols global_position_ms,gemini_fram
 flowchart TD
     V["full video.mp4"]
     V --> SD["scene_cuts\nscene_detect_content"]
-    V --> FI["frame_iterator on video_sources\nfps = VISION_SAMPLE_KEYFRAMES / VISION_REFERENCE_DURATION_SEC"]
+    V --> FI["frame_iterator on video_sources\nnum_frames = VISION_SAMPLE_KEYFRAMES (default)"]
     FI --> KF["~24 keyframe rows"]
     KF --> VIS["Path 2 Gemini + Path 3 OSS vision"]
     VIS --> DEDUPE["dedupe_frame_context"]
@@ -186,7 +188,7 @@ flowchart TD
 ```mermaid
 flowchart TD
   subgraph vision [Vision]
-    V1["video"] --> FI["fps sample ~24 frames"]
+    V1["video"] --> FI["num_frames sample ~24 frames"]
     FI --> GF["generate_content per frame"]
     GF --> GFC["gemini_frame_context"]
     GFC --> DED["dedupe → select → summarize"]
@@ -201,7 +203,7 @@ flowchart TD
   subgraph rollup [Synthesis]
     DED --> ASM["assemble_benchmark_context"]
     GTL --> ASM
-    ASM --> SYN["generate_content TEXT ONLY"]
+    ASM --> SYN["generate_content multimodal\ntext + ≤8 images"]
     SYN --> GOI["gemini_orchestrated_insight"]
   end
 ```
@@ -214,7 +216,7 @@ On a **~255s** Pursuit clip (`AUDIO_SPLIT_MODE=full`, `SCENE_AWARE_FRAMES=1`, `V
 |------|------------------|
 | Vision (`generate_content` per keyframe) | **~24** |
 | ASR (`gemini.transcribe`) | **1** |
-| Synthesis (`generate_content` text-only) | **1** |
+| Synthesis (`generate_content` multimodal, ≤8 images) | **1** |
 | **Path 2 total** | **~26** |
 | Path 1 native (comparison) | **+1** full-video call |
 
@@ -255,7 +257,7 @@ flowchart TD
 | Step | API | Notes |
 |------|-----|-------|
 | Per-keyframe vision | `oss_frame_insight_llama` | Qwen2.5-VL-3B + mmproj |
-| Audio | WhisperX (default) | Requires `pip install -e ".[whisperx]"` + `HF_TOKEN` |
+| Audio | WhisperX (default) | Requires `pip install -e ".[oss]"` + `HF_TOKEN` |
 | Frame prep | dedupe → select → summarize → **compact** | Cap **16** frames × **240** chars |
 | Synthesis | `oss_insight_llama` | Qwen2.5-7B, `n_ctx=8192`, `OSS_SYNTH_MAX_TOKENS=2048` |
 
@@ -268,7 +270,7 @@ Each `run-benchmark` without `--reset` inserts a new `video_sources` row and mor
 **For reproducible paper numbers, always use `--reset`:**
 
 ```bash
-run-benchmark --video assets/pursuit-of-happiness.mp4 --reset --export results/
+run-benchmark --paths 1,2 --reset --export results/
 ```
 
 ---
@@ -282,20 +284,20 @@ sequenceDiagram
     participant KF as keyframes view
     participant AC as audio_chunks view
 
+    Note over User,AC: Default --paths 1,2 (no OSS columns)
+
     User->>VS: insert video + query
     VS->>VS: Path 1 native runs
     VS->>AC: materialize audio chunks
     VS->>KF: materialize keyframes
-    KF->>KF: gemini_frame_insight + oss_frame_insight
-    AC->>AC: gemini ASR + WhisperX or Whisper
+    KF->>KF: gemini_frame_insight
+    AC->>AC: gemini ASR
     User->>VS: recompute gemini_transcript_context + gemini_asr_cost
     User->>VS: recompute gemini_frame_context + vision costs
     User->>VS: recompute gemini_frame_context_deduped + selected + summarized
     User->>VS: recompute gemini_orchestrated_context cascade
     User->>VS: recompute gemini_orchestrated_insight + synthesis_cost + total
-    User->>VS: recompute oss_transcript_context + oss_frame_context
-    User->>VS: recompute oss dedupe + selected + summarized + compact
-    User->>VS: recompute oss_context cascade + oss_insight
+    Note over User,VS: Path 3 only: oss_* frame/transcript/insight recomputes
 ```
 
 ---
@@ -305,9 +307,9 @@ sequenceDiagram
 | Metric | Approx (Pursuit ~255s, default) |
 |--------|----------------------------------|
 | `native_cost` | ~$0.114 |
-| `gemini_orchestrated_total` | ~$0.037 |
+| `gemini_orchestrated_total` | ~$0.039 |
 | `gemini_vision_track_cost` | ~$0.017 (~24 API frames) |
-| `gemini_asr_cost` | ~$0.012 |
+| `gemini_asr_cost` | ~$0.013 |
 | `gemini_synthesis_cost` | ~$0.008 (~16 context frames) |
 | `oss_cost` | $0.00 |
 
@@ -320,17 +322,19 @@ sequenceDiagram
 Cost-bounded phase-2 eval on [`lmms-lab/Video-MME`](https://huggingface.co/datasets/lmms-lab/Video-MME):
 
 - Stratified **30 questions** (short / medium / long)
-- **Paths 1, 2, 3, 5** (Gemini native + orchestrated, local OSS, Nova); **fal skipped** (120s cap)
-- Path 3 reuses **shared Gemini ASR** + local VLM keyframe captions + 7B MCQ synth (API $0)
+- Default CLI paths **1,2** (same as Pursuit). Opt-in **3** (OSS) and **5** (Nova); **fal omitted**
+- Path 3 reuses **shared Gemini ASR and Gemini keyframes** (those calls are paid) plus local VLM captions and a 7B MCQ synth. `oss_cost` / local synth is $0 API; it is not a free Gemini run
 - Catalog dir `videomme/` (separate from Pursuit `video_benchmarking/`)
 - Path 2/3: frames (+ OSS captions) once per video; MCQ synthesis per question
+- Unset frame env bumps sample/select to **32 / 24**
+- Pursuit Path 5 defaults Nova **Pro**; Video-MME prefers **Lite** unless `NOVA_MODEL_ID` is set
 - Metrics: exact-match letter (A–D), `cost_per_correct`, `ingest_failed` for empty native/Nova
-- CLI: `--paths 1,2,3,5`, `--skip-oss`, `--skip-nova`
+- CLI: `--paths 1,2`, `--paths 1,2,3,5`, `--skip-oss`, `--skip-nova`
 
 ```bash
 pip install -e ".[videomme]"
-NOVA_MODEL_ID=amazon.nova-lite-v1:0 ./scripts/run_videomme_dev.sh
-# Env: VIDEOME_DEV_N=30 VIDEOME_DEV_SEED=42 VIDEOME_PATHS=1,2,3,5
+run-videomme-dev --paths 1,2 --reset
+# Env: VIDEOME_DEV_N=30 VIDEOME_DEV_SEED=42 VIDEOME_PATHS=1,2
 ```
 
 Artifacts: `results/videomme-dev/<timestamp>/` (`summary.json`, `predictions.jsonl`, `REPORT.md`).
@@ -345,12 +349,12 @@ Artifacts: `results/videomme-dev/<timestamp>/` (`summary.json`, `predictions.jso
 | [`src/video_benchmark/config.py`](../src/video_benchmark/config.py) | Env → `BenchmarkConfig` |
 | [`src/video_benchmark/schema.py`](../src/video_benchmark/schema.py) | Pursuit `TableModel` classes + `update_all` |
 | [`src/video_benchmark/pipeline.py`](../src/video_benchmark/pipeline.py) | Bind catalog tables after schema apply |
-| [`src/video_benchmark/videomme/`](../src/video_benchmark/videomme/) | Video-MME dev slice (sample, Path 1–2, export) |
+| [`src/video_benchmark/videomme/`](../src/video_benchmark/videomme/) | Video-MME dev slice (Paths 1,2,3,5; default 1+2) |
 | [`src/video_benchmark/runner.py`](../src/video_benchmark/runner.py) | Insert + recompute order |
 | [`src/video_benchmark/oss_providers.py`](../src/video_benchmark/oss_providers.py) | Path 3 vision + synthesis UDFs |
 | [`src/video_benchmark/udfs.py`](../src/video_benchmark/udfs.py) | Prompts, costing, frame prep |
 | [`src/video_benchmark/queries.py`](../src/video_benchmark/queries.py) | `@pxt.query` rollups |
-| [`src/video_benchmark/reporting.py`](../src/video_benchmark/reporting.py) | Three-way comparison + export |
+| [`src/video_benchmark/reporting.py`](../src/video_benchmark/reporting.py) | Path-gated comparison + export |
 | [`src/video_benchmark/scoring.py`](../src/video_benchmark/scoring.py) | Native-parity heuristics |
 
 ---
@@ -358,57 +362,13 @@ Artifacts: `results/videomme-dev/<timestamp>/` (`summary.json`, `predictions.jso
 ## 11. Run it
 
 ```bash
-pip install -e ".[dev,whisperx]"
+pip install -e ".[dev,oss]"
 cp .env.example .env   # set GOOGLE_API_KEY and HF_TOKEN
 
-run-benchmark --paths 1,2 --video assets/pursuit-of-happiness.mp4 --reset --export results/
+run-benchmark --paths 1,2 --reset --export results/
 
 # Lab only (not part of the showcase story):
 # ./scripts/run_tune_ab.sh
 ```
 
-**Full env reference** (defaults aligned with `config.py`; README lists only the intentional knobs):
-
-```bash
-# --- Showcase knobs ---
-VISION_SAMPLE_KEYFRAMES=24
-FRAME_SELECT_BUDGET=16
-FRAME_CONTEXT_MAX_ENTRIES=16
-GEMINI_SYNTH_MAX_IMAGES=8
-GEMINI_MODEL=gemini-2.5-flash
-BENCHMARK_PATHS=1,2
-
-# --- Pipeline ---
-AUDIO_SPLIT_MODE=full
-SCENE_AWARE_FRAMES=1
-MAX_VISION_KEYFRAMES=12
-VISION_REFERENCE_DURATION_SEC=260.0
-GEMINI_VISION_MODE=per_frame
-SCENE_DETECT_THRESHOLD=20.0
-MIN_SEGMENT_DURATION=1.0
-SEGMENT_FALLBACK_WINDOW_SEC=10.0
-
-# --- Path 3 OSS ---
-OSS_ASR=whisperx
-WHISPERX_MODEL=small.en
-WHISPERX_MIN_SPEAKERS=2
-HF_TOKEN=
-OSS_BACKEND=llama_cpp
-OSS_VISION_REPO_ID=unsloth/Qwen2.5-VL-3B-Instruct-GGUF
-OSS_VISION_REPO_FILENAME=Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf
-OSS_VISION_MMPROJ_REPO_FILENAME=mmproj-F16.gguf
-OSS_SYNTH_REPO_ID=Qwen/Qwen2.5-7B-Instruct-GGUF
-OSS_SYNTH_REPO_FILENAME=qwen2.5-7b-instruct-q3_k_m.gguf
-OSS_SYNTH_MAX_TOKENS=2048
-OSS_FRAME_CONTEXT_MAX_ENTRIES=16
-OSS_FRAME_INSIGHT_MAX_CHARS=240
-
-# --- Optional natives (not hero paths) ---
-# ENABLE_FAL=1  FAL_KEY=...
-# ENABLE_NOVA=1  AWS_*/Bedrock...
-
-# Lab tagging only:
-# BENCHMARK_TUNE_TAG=baseline
-```
-
-Recipes: [`examples/orchestrated.env`](../examples/orchestrated.env), [`examples/oss.env`](../examples/oss.env).
+Full env defaults: [`.env.example`](../.env.example). Recipes: [`examples/orchestrated.env`](../examples/orchestrated.env), [`examples/oss.env`](../examples/oss.env).

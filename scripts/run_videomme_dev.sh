@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Video-MME dev slice: stratified 30 Q, Paths 1/2/3/5 (pass --reset to rebuild catalog).
+# Video-MME dev slice: stratified 30 Q. Default paths are 1,2.
+# Opt in with --paths 1,2,3,5. Pass --reset after a path or schema change.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

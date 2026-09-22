@@ -7,7 +7,7 @@ Committed public artifacts:
 | [`results/golden/`](../results/golden/) | Headline Pursuit export (`fair_v1_nova_pro`) |
 | Local `results/<timestamp>/` | Gitignored experiment dumps |
 | Local `results/tune-ab/` | Frame/ASR/synth sweeps — lab tooling only |
-| Local `results/videomme-dev/` | Video-MME exports (gitignored) |
+| Local `results/videomme-dev/` | Video-MME exports (**gitignored**; GitHub clones will not have these timestamp dirs) |
 
 ## Video-MME pointers (local)
 

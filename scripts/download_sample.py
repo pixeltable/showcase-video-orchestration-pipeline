@@ -3,19 +3,12 @@
 
 from __future__ import annotations
 
-import urllib.request
-
-from video_benchmark.config import ASSETS_DIR, DEFAULT_SAMPLE, PURSUIT_VIDEO_URL
+from video_benchmark.runner import ensure_sample_video
 
 
 def main() -> None:
-    ASSETS_DIR.mkdir(parents=True, exist_ok=True)
-    if DEFAULT_SAMPLE.exists():
-        print(f'Sample already exists: {DEFAULT_SAMPLE}')
-        return
-    print(f'Downloading {PURSUIT_VIDEO_URL} ...')
-    urllib.request.urlretrieve(PURSUIT_VIDEO_URL, DEFAULT_SAMPLE)
-    print(f'Saved to {DEFAULT_SAMPLE}')
+    path = ensure_sample_video()
+    print(f'Sample video: {path}')
 
 
 if __name__ == '__main__':

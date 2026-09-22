@@ -12,11 +12,6 @@ def videomme_frame_prompt(position_sec: float | None = None) -> str:
     return mcq_frame_prompt(position_sec)
 
 
-@pxt.udf
-def videomme_mcq_prompt(question: str, options: list | None) -> str:
-    return mcq_prompt(question, list(options) if options else None)
-
-
 def orchestrated_mcq_prompt(
     question: str,
     options: list[str] | None,

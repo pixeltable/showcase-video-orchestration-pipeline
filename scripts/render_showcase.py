@@ -20,8 +20,49 @@ def _clip(text: str, limit: int = 1200) -> str:
     return text[: limit - 1].rstrip() + '…'
 
 
+def _insights_from_report(report: str) -> dict[str, str]:
+    keys = {
+        'PATH 1': 'native_insight',
+        'PATH 2': 'gemini_orchestrated_insight',
+        'PATH 3': 'oss_insight',
+        'PATH 4': 'fal_insight',
+        'PATH 5': 'nova_insight',
+    }
+    out: dict[str, str] = {}
+    current = None
+    buf: list[str] = []
+    for line in report.splitlines():
+        matched = next((key for key in keys if line.startswith(key)), None)
+        if matched:
+            if current is not None:
+                out[keys[current]] = '\n'.join(buf).strip()
+            current = matched
+            buf = []
+            continue
+        if current is not None and line.startswith('=======') and buf:
+            out[keys[current]] = '\n'.join(buf).strip()
+            current = None
+            buf = []
+            continue
+        if current is not None:
+            buf.append(line)
+    if current is not None:
+        out[keys[current]] = '\n'.join(buf).strip()
+    return out
+
+
+def _load_insights(golden_dir: Path) -> dict:
+    path = golden_dir / 'insights.json'
+    if path.exists():
+        return json.loads(path.read_text())
+    report = golden_dir / 'REPORT.md'
+    if report.exists():
+        return _insights_from_report(report.read_text())
+    raise FileNotFoundError(f'Missing insights.json and REPORT.md in {golden_dir}')
+
+
 def render(golden_dir: Path) -> str:
-    insights = json.loads((golden_dir / 'insights.json').read_text())
+    insights = _load_insights(golden_dir)
     summary = json.loads((golden_dir / 'summary.json').read_text())
     columns = [
         (
@@ -170,7 +211,7 @@ def render(golden_dir: Path) -> str:
   </section>
   <footer>
     Regenerate with <code>python scripts/render_showcase.py</code>.
-    Full answers: <code>results/golden/REPORT.md</code>.
+    Full answers including Paths 4–5: <code>results/golden/REPORT.md</code>.
   </footer>
 </body>
 </html>

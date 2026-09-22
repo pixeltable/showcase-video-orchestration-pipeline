@@ -141,6 +141,64 @@ def model_column_names(table_model_base: type, table_name: str) -> set[str]:
     return set(models[table_name].__columns__)
 
 
+class CatalogSchemaMismatch(RuntimeError):
+    """Live catalog is missing columns required by the requested --paths."""
+
+
+def required_parent_columns(plan: PathPlan) -> list[str]:
+    cols: list[str] = []
+    if plan.want_1:
+        cols.append('native_insight')
+    if plan.want_2:
+        cols.append('gemini_orchestrated_insight')
+    if plan.want_3:
+        cols.append('oss_insight')
+    if plan.want_4:
+        cols.append('fal_insight')
+    if plan.want_5:
+        cols.append('nova_insight')
+    return cols
+
+
+_PATH_INSIGHT_COLUMNS = (
+    ('native_insight', 'want_1'),
+    ('gemini_orchestrated_insight', 'want_2'),
+    ('oss_insight', 'want_3'),
+    ('fal_insight', 'want_4'),
+    ('nova_insight', 'want_5'),
+)
+
+
+def _ensure_catalog_matches_plan(plan: PathPlan) -> None:
+    existing = pxt.get_table(f'{CATALOG_DIR}.video_sources', if_not_exists='ignore')
+    if existing is None:
+        return
+    existing_cols = set(existing.columns())
+    missing = [c for c in required_parent_columns(plan) if c not in existing_cols]
+    extra = [
+        name
+        for name, flag in _PATH_INSIGHT_COLUMNS
+        if name in existing_cols and not getattr(plan, flag)
+    ]
+    keyframes = pxt.get_table(f'{CATALOG_DIR}.keyframes', if_not_exists='ignore')
+    if plan.need_modular and keyframes is None:
+        missing.append('keyframes')
+    elif plan.want_3 and keyframes is not None and 'oss_frame_insight' not in set(
+        keyframes.columns()
+    ):
+        missing.append('keyframes.oss_frame_insight')
+    if missing or extra:
+        parts = []
+        if missing:
+            parts.append(f'missing {missing}')
+        if extra:
+            parts.append(f'has extra path columns {extra}')
+        raise CatalogSchemaMismatch(
+            f'Catalog {CATALOG_DIR} {" and ".join(parts)} for paths '
+            f'{",".join(sorted(plan.active))}. Rerun with --reset.'
+        )
+
+
 def build_core_models(config: BenchmarkConfig, plan: PathPlan) -> type:
     """VideoSources + views (no parent rollups that depend on @pxt.query)."""
     TableModel = pxt.model_base()
@@ -152,11 +210,12 @@ def build_core_models(config: BenchmarkConfig, plan: PathPlan) -> type:
     class VideoSources(TableModel, name='video_sources'):
         video: pxt.Video
         query: pxt.String
-        scene_cuts = scene_detect_content(video, threshold=threshold)
         video_duration_sec = get_duration(video)
-        segment_times = scene_cut_segment_times(
-            scene_cuts, video_duration_sec, min_seg, fallback
-        )
+        if plan.need_modular:
+            scene_cuts = scene_detect_content(video, threshold=threshold)
+            segment_times = scene_cut_segment_times(
+                scene_cuts, video_duration_sec, min_seg, fallback
+            )
         if plan.want_1:
             native_response = generate_content(
                 model=gemini_model,
@@ -260,46 +319,15 @@ def build_core_models(config: BenchmarkConfig, plan: PathPlan) -> type:
             whisperx_segment_lines = extract_whisperx_segments(whisperx_diarized, segment_start)
 
     if plan.use_frame_budget:
-        class Keyframes(
+        _define_keyframes(
             TableModel,
-            name='keyframes',
             base=VideoSources,
             iterator=_frame_iterator(VideoSources.video, config, keyframes_only=False),
-        ):
-            frame_position_sec = frame_attrs['time'].astype(pxt.Float)
-            segment_start = 0.0
-            global_position_sec = frame_position_sec.astype(pxt.Float)
-            global_position_ms = (global_position_sec * 1000.0).astype(pxt.Float)
-            if plan.want_2 and not plan.use_batched_vision:
-                gemini_frame_response = generate_content(
-                    model=gemini_model,
-                    contents=[frame, frame_prompt(query, global_position_sec)],
-                )
-                gemini_frame_insight = gemini_text(gemini_frame_response)
-                gemini_frame_input_tokens = estimate_image_tokens(query)
-                gemini_frame_output_tokens = estimate_text_tokens(gemini_frame_insight)
-                gemini_frame_actual_input_tokens = gemini_prompt_tokens(gemini_frame_response)
-                gemini_frame_actual_output_tokens = gemini_output_tokens(gemini_frame_response)
-                gemini_frame_cost = resolved_gemini_cost(
-                    gemini_frame_actual_input_tokens,
-                    gemini_frame_actual_output_tokens,
-                    gemini_frame_input_tokens,
-                    gemini_frame_output_tokens,
-                    GEMINI_25_FLASH_INPUT_PER_M,
-                )
-            if plan.want_3:
-                oss_frame_insight = oss_frame_insight_expr(
-                    frame,
-                    query,
-                    global_position_sec,
-                    backend=config.oss_backend,
-                    vision_model=config.oss_vision_model,
-                    vision_repo_id=config.oss_vision_repo_id,
-                    vision_repo_filename=config.oss_vision_repo_filename,
-                    mmproj_repo_filename=config.oss_vision_mmproj_repo_filename,
-                    vision_chat_format=config.oss_vision_chat_format,
-                    ollama_host=config.ollama_host,
-                )
+            plan=plan,
+            config=config,
+            gemini_model=gemini_model,
+            budgeted=True,
+        )
     else:
         class Segments(
             TableModel,
@@ -314,47 +342,72 @@ def build_core_models(config: BenchmarkConfig, plan: PathPlan) -> type:
         ):
             pass
 
-        class Keyframes(
+        _define_keyframes(
             TableModel,
-            name='keyframes',
             base=Segments,
             iterator=_frame_iterator(Segments.video_segment, config, keyframes_only=True),
-        ):
-            frame_position_sec = frame_attrs['time'].astype(pxt.Float)
-            global_position_sec = (segment_start + frame_position_sec).astype(pxt.Float)
-            global_position_ms = (global_position_sec * 1000.0).astype(pxt.Float)
-            if plan.want_2 and not plan.use_batched_vision:
-                gemini_frame_response = generate_content(
-                    model=gemini_model,
-                    contents=[frame, frame_prompt(query, global_position_sec)],
-                )
-                gemini_frame_insight = gemini_text(gemini_frame_response)
-                gemini_frame_input_tokens = estimate_image_tokens(query)
-                gemini_frame_output_tokens = estimate_text_tokens(gemini_frame_insight)
-                gemini_frame_actual_input_tokens = gemini_prompt_tokens(gemini_frame_response)
-                gemini_frame_actual_output_tokens = gemini_output_tokens(gemini_frame_response)
-                gemini_frame_cost = resolved_gemini_cost(
-                    gemini_frame_actual_input_tokens,
-                    gemini_frame_actual_output_tokens,
-                    gemini_frame_input_tokens,
-                    gemini_frame_output_tokens,
-                    GEMINI_25_FLASH_INPUT_PER_M,
-                )
-            if plan.want_3:
-                oss_frame_insight = oss_frame_insight_expr(
-                    frame,
-                    query,
-                    global_position_sec,
-                    backend=config.oss_backend,
-                    vision_model=config.oss_vision_model,
-                    vision_repo_id=config.oss_vision_repo_id,
-                    vision_repo_filename=config.oss_vision_repo_filename,
-                    mmproj_repo_filename=config.oss_vision_mmproj_repo_filename,
-                    vision_chat_format=config.oss_vision_chat_format,
-                    ollama_host=config.ollama_host,
-                )
+            plan=plan,
+            config=config,
+            gemini_model=gemini_model,
+            budgeted=False,
+        )
 
     return TableModel
+
+
+def _define_keyframes(
+    TableModel,
+    *,
+    base,
+    iterator,
+    plan: PathPlan,
+    config: BenchmarkConfig,
+    gemini_model: str,
+    budgeted: bool,
+) -> None:
+    class Keyframes(
+        TableModel,
+        name='keyframes',
+        base=base,
+        iterator=iterator,
+    ):
+        frame_position_sec = frame_attrs['time'].astype(pxt.Float)
+        if budgeted:
+            segment_start = 0.0
+            global_position_sec = frame_position_sec.astype(pxt.Float)
+        else:
+            global_position_sec = (segment_start + frame_position_sec).astype(pxt.Float)
+        global_position_ms = (global_position_sec * 1000.0).astype(pxt.Float)
+        if plan.want_2 and not plan.use_batched_vision:
+            gemini_frame_response = generate_content(
+                model=gemini_model,
+                contents=[frame, frame_prompt(query, global_position_sec)],
+            )
+            gemini_frame_insight = gemini_text(gemini_frame_response)
+            gemini_frame_input_tokens = estimate_image_tokens(query)
+            gemini_frame_output_tokens = estimate_text_tokens(gemini_frame_insight)
+            gemini_frame_actual_input_tokens = gemini_prompt_tokens(gemini_frame_response)
+            gemini_frame_actual_output_tokens = gemini_output_tokens(gemini_frame_response)
+            gemini_frame_cost = resolved_gemini_cost(
+                gemini_frame_actual_input_tokens,
+                gemini_frame_actual_output_tokens,
+                gemini_frame_input_tokens,
+                gemini_frame_output_tokens,
+                GEMINI_25_FLASH_INPUT_PER_M,
+            )
+        if plan.want_3:
+            oss_frame_insight = oss_frame_insight_expr(
+                frame,
+                query,
+                global_position_sec,
+                backend=config.oss_backend,
+                vision_model=config.oss_vision_model,
+                vision_repo_id=config.oss_vision_repo_id,
+                vision_repo_filename=config.oss_vision_repo_filename,
+                mmproj_repo_filename=config.oss_vision_mmproj_repo_filename,
+                vision_chat_format=config.oss_vision_chat_format,
+                ollama_host=config.ollama_host,
+            )
 
 
 def build_rollup_models(config: BenchmarkConfig, plan: PathPlan) -> type:
@@ -368,11 +421,12 @@ def build_rollup_models(config: BenchmarkConfig, plan: PathPlan) -> type:
     class VideoSources(TableModel, name='video_sources'):
         video: pxt.Video
         query: pxt.String
-        scene_cuts = scene_detect_content(video, threshold=threshold)
         video_duration_sec = get_duration(video)
-        segment_times = scene_cut_segment_times(
-            scene_cuts, video_duration_sec, min_seg, fallback
-        )
+        if plan.need_modular:
+            scene_cuts = scene_detect_content(video, threshold=threshold)
+            segment_times = scene_cut_segment_times(
+                scene_cuts, video_duration_sec, min_seg, fallback
+            )
         if plan.want_1:
             native_response = generate_content(
                 model=gemini_model,
@@ -548,6 +602,7 @@ def apply_pursuit_schema(config: BenchmarkConfig, paths: set[str] | None = None)
     """Create or reconcile the Pursuit catalog, then register scoped queries."""
     plan = plan_paths(config, paths)
     pxt.create_dir(CATALOG_DIR, if_exists='ignore')
+    _ensure_catalog_matches_plan(plan)
     existing = pxt.get_table(f'{CATALOG_DIR}.video_sources', if_not_exists='ignore')
     existing_cols = set(existing.columns()) if existing is not None else set()
     # Core models omit query-backed rollups. Re-applying them after rollups exist
@@ -555,8 +610,12 @@ def apply_pursuit_schema(config: BenchmarkConfig, paths: set[str] | None = None)
     if not existing_cols.intersection({'gemini_orchestrated_insight', 'oss_insight'}):
         build_core_models(config, plan).update_all(CATALOG_DIR)
     if plan.need_modular:
-        keyframes = pxt.get_table(f'{CATALOG_DIR}.keyframes')
-        audio_chunks = pxt.get_table(f'{CATALOG_DIR}.audio_chunks')
+        keyframes = pxt.get_table(f'{CATALOG_DIR}.keyframes', if_not_exists='ignore')
+        audio_chunks = pxt.get_table(f'{CATALOG_DIR}.audio_chunks', if_not_exists='ignore')
+        if keyframes is None or audio_chunks is None:
+            raise CatalogSchemaMismatch(
+                f'Catalog {CATALOG_DIR} is missing keyframes/audio_chunks. Rerun with --reset.'
+            )
         queries.register(
             keyframes,
             audio_chunks,

@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RESULTS = PROJECT_ROOT / 'results'
 OUT_DIR = PROJECT_ROOT / 'docs' / 'paper' / 'figures'
 
-PRIMARY_RUN = RESULTS / '20260710T040910Z'
+PRIMARY_RUN = RESULTS / 'golden'
 LITE_RUN = RESULTS / '20260710T025835Z'
 
 PATH_ORDER = ('native', 'gemini', 'oss', 'fal', 'nova')
@@ -199,12 +199,16 @@ def fig_nova_ablation(pro_rows: list[dict], lite_rows: list[dict], out: Path) ->
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     pro_rows = load_tune_comparison(PRIMARY_RUN / 'TUNE_COMPARISON.md')
-    lite_rows = load_tune_comparison(LITE_RUN / 'TUNE_COMPARISON.md')
 
     fig_cost_by_path(pro_rows, OUT_DIR / 'cost_by_path.png')
     fig_quality_heatmap(pro_rows, OUT_DIR / 'quality_heatmap.png')
     fig_cost_vs_quality(pro_rows, OUT_DIR / 'cost_vs_quality.png')
-    fig_nova_ablation(pro_rows, lite_rows, OUT_DIR / 'nova_lite_vs_pro.png')
+    lite_cmp = LITE_RUN / 'TUNE_COMPARISON.md'
+    if lite_cmp.exists():
+        lite_rows = load_tune_comparison(lite_cmp)
+        fig_nova_ablation(pro_rows, lite_rows, OUT_DIR / 'nova_lite_vs_pro.png')
+    else:
+        print(f'Skip Nova Lite figure (missing {lite_cmp})')
 
     print(f'Wrote figures to {OUT_DIR}')
     for name in (
@@ -214,7 +218,8 @@ def main() -> int:
         'nova_lite_vs_pro.png',
     ):
         path = OUT_DIR / name
-        print(f'  {name} ({path.stat().st_size} bytes)')
+        if path.exists():
+            print(f'  {name} ({path.stat().st_size} bytes)')
     return 0
 
 

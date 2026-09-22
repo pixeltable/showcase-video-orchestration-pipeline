@@ -1,6 +1,6 @@
 ---
 title: "Native Multimodal Video Understanding vs Modular Keyframe Orchestration: A Fair Five-Path Benchmark on a Declarative Pipeline"
-author: "Image vs Video Understanding Benchmark"
+author: "Pixeltable showcase: video orchestration pipeline"
 date: "2026-07-10"
 geometry: margin=1in
 fontsize: 11pt
@@ -9,7 +9,7 @@ reference-section-title: References
 
 # Abstract
 
-Native multimodal models (NMMs) process full video end-to-end, while modular pipelines sample keyframes, transcribe audio, and synthesize answers. We ask which architecture wins on **cost and narrative quality** for a fixed long-form clip when prompts and evaluation are held fair. We implement five paths in a declarative [Pixeltable](https://pixeltable.com) catalog [@pixeltable]: (1) native Gemini 2.5 Flash on the full video; (2) Gemini keyframe orchestration with multimodal synthesis; (3) open-source Qwen2.5-VL + WhisperX + Qwen2.5-7B; (4) fal-ai/video-understanding (120s API cap); and (5) Amazon Nova Pro on Bedrock. On a ~255s *Pursuit of Happyness* interview clip (`fair_v1_nova_pro`, `results/20260710T040910Z`), Path 2 costs **$0.039** versus Path 1 **$0.114** (~66% cheaper) and uniquely passes all five sample heuristics plus general completeness checks. Path 3 is free of API cost but misses punchline and salary details. fal is most expensive (**$0.24**) and incomplete under the duration cap. Nova Pro (**$0.060**) improves on Lite but remains terse and partially incorrect. We conclude that, on this narrative Q&A task, **same-model orchestration dominates native Gemini on cost–quality**, while third-party natives are not automatically competitive once duration limits and pricing are accounted for.
+Native multimodal models (NMMs) process full video end-to-end, while modular pipelines sample keyframes, transcribe audio, and synthesize answers. We ask which architecture wins on **cost and narrative quality** for a fixed long-form clip when prompts and evaluation are held fair. We implement five paths in a declarative [Pixeltable](https://pixeltable.com) catalog [@pixeltable]: (1) native Gemini 2.5 Flash on the full video; (2) Gemini keyframe orchestration with multimodal synthesis; (3) open-source Qwen2.5-VL + WhisperX + Qwen2.5-7B; (4) fal-ai/video-understanding (120s API cap); and (5) Amazon Nova Pro on Bedrock. On a ~255s *Pursuit of Happyness* interview clip (`fair_v1_nova_pro`, committed as `results/golden/`), Path 2 costs **$0.039** versus Path 1 **$0.114** (~66% cheaper) and uniquely passes all five sample heuristics plus general completeness checks. Path 3 is free of API cost but misses punchline and salary details. fal is most expensive (**$0.24**) and incomplete under the duration cap. Nova Pro (**$0.060**) improves on Lite but remains terse and partially incorrect. We conclude that, on this narrative Q&A task, **same-model orchestration dominates native Gemini on cost–quality**, while third-party natives are not automatically competitive once duration limits and pricing are accounted for.
 
 # 1 Introduction
 
@@ -36,7 +36,7 @@ This paper contributes:
 
 # 3 System
 
-All paths share one catalog (`video_benchmarking/`), one video row, and one query string. Child views materialize keyframes and audio chunks; parent computed columns assemble path outputs and costs [@pixeltable]. The design goal is **declarative reproducibility**: inserting a video triggers the same computed graph that produced the paper exports, rather than a one-off notebook script.
+All paths share one catalog (`video_benchmarking/`), one video row, and one query string, declared as Pixeltable **0.7.8 `TableModel`** classes and applied with `update_all()`. Child views materialize keyframes and audio chunks; parent computed columns assemble path outputs and costs [@pixeltable]. The design goal is **declarative reproducibility**: inserting a video triggers the same computed graph that produced the paper exports, rather than a one-off notebook script. This repository is a CLI batch benchmark, not a FastAPI / `pxt service` app.
 
 ## 3.1 Catalog layout
 
@@ -50,7 +50,7 @@ All paths share one catalog (`video_benchmarking/`), one video row, and one quer
 | 2 Gemini orchestrated | 24 sampled frames → 16 scene-selected → Gemini vision + `gemini.transcribe` → multimodal synth (<=8 images) | same Gemini | `gemini_orchestrated_total` |
 | 3 OSS | Same frames → Qwen2.5-VL captions + WhisperX → Qwen2.5-7B synth | local GGUF [@qwen25vl; @whisperx] | `oss_cost` (= $0) |
 | 4 Native fal | Public URL → `fal-ai/video-understanding` (input trimmed to **120s**) | fal API [@falvideounderstanding] | `fal_cost` |
-| 5 Native Nova | Full video → Bedrock `invoke_model` | `amazon.nova-pro-v1:0` [@novabedrock] | `nova_cost` |
+| 5 Native Nova | Full video → Bedrock `converse` | `amazon.nova-pro-v1:0` [@novabedrock] | `nova_cost` |
 
 Paths 1 and 2 use the **same Gemini model**, so differences isolate architecture. Paths 4–5 reuse Path 1's `native_prompt`. Path 2's orchestrated total decomposes into vision-track, ASR, and synthesis sub-costs in `summary.json` (headline: ~$0.017 / $0.013 / $0.008).
 
@@ -72,7 +72,7 @@ Without fairness controls, modular paths can look artificially strong (sample-sp
 
 **Clip.** `assets/pursuit-of-happiness.mp4`, duration **254.96s** (Chris Gardner interview scene). The clip is dialogue-heavy with a late unpaid-internship reveal—useful for testing whether sparse sampling preserves end-of-timeline content.
 
-**Headline run.** Tag `fair_v1_nova_pro`, export `results/20260710T040910Z` (macOS arm64, Python 3.12). Config highlights: Gemini `gemini-2.5-flash`; scene-aware 24→16 frames; Path 2 synth at most 8 images; Path 3 WhisperX + Qwen2.5-VL-3B + Qwen2.5-7B; fal enabled; Nova `amazon.nova-pro-v1:0`.
+**Headline run.** Tag `fair_v1_nova_pro`, committed export `results/golden/` (lab provenance `results/20260710T040910Z`). Config highlights: Gemini `gemini-2.5-flash`; scene-aware 24→16 frames; Path 2 synth at most 8 images; Path 3 WhisperX + Qwen2.5-VL-3B + Qwen2.5-7B; fal enabled; Nova `amazon.nova-pro-v1:0`.
 
 **Ablation run.** Tag `fair_v1_fal_nova`, export `results/20260710T025835Z` — same setup with **Nova Lite** for Lite vs Pro comparison. Earlier three-path fair run `results/20260709T044103Z` and cleanup run `results/20260709T025231Z` (`canonical`, Path 2 ~$0.037 vs native ~$0.115) corroborate the Gemini cost gap before fal/Nova were added.
 
@@ -170,16 +170,16 @@ python scripts/build_paper_figures.py
 
 ```bash
 BENCHMARK_TUNE_TAG=fair_v1_nova_pro \
-  run-benchmark --video assets/pursuit-of-happiness.mp4 --reset
+  run-benchmark --paths 1,2,3,4,5 --reset
 ```
 
 **Primary artifacts**
 
 | Artifact | Path |
 |----------|------|
-| Headline export | `results/20260710T040910Z/` |
-| Nova Lite ablation | `results/20260710T025835Z/` |
-| Canonical three-path | `results/20260709T025231Z/` |
+| Headline export | `results/golden/` |
+| Nova Lite ablation | local `results/20260710T025835Z/` (gitignored) |
+| Canonical three-path | local `results/20260709T025231Z/` (gitignored) |
 | Costs | `summary.json` |
 | Answers | `insights.json` |
 | Heuristic table | `TUNE_COMPARISON.md` |

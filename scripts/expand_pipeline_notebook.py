@@ -31,8 +31,7 @@ def main() -> None:
         cell(
             'markdown',
             '# Pipeline Analytics\n\n'
-            '**Kernel:** use `video-benchmark` (launch via `./scripts/notebook.sh`). '
-            'Do not use the conda `pxt` env.\n\n'
+            '**Kernel:** use `video-benchmark` (launch via `./scripts/notebook.sh`).\n\n'
             'After code changes, run `run-benchmark --reset` once so catalog columns match '
             'the installed package.\n',
             'intro',
@@ -50,8 +49,8 @@ def main() -> None:
             "print('pixeltable:', pxt.__version__)\n"
             "if '.venv' not in sys.executable:\n"
             "    print('WARNING: select the video-benchmark kernel (.venv), not conda pxt')\n"
-            "if not str(pxt.__version__).startswith('0.7.'):\n"
-            "    print('WARNING: expected pixeltable 0.7.x; run ./scripts/notebook.sh')\n\n"
+            "if str(pxt.__version__) != '0.7.8':\n"
+            "    print('WARNING: expected pixeltable 0.7.8; run ./scripts/notebook.sh')\n\n"
             "pxt.ls('video_benchmarking')\n",
             'setup',
         ),
@@ -59,19 +58,22 @@ def main() -> None:
             'markdown',
             '## Pipeline map\n\n'
             'Catalog DAG (see [docs/WORKFLOW.md](../docs/WORKFLOW.md)):\n\n'
-            '`video_sources` → `keyframes` (fps sample when scene-aware) + `audio_chunks` (ASR) '
+            '`video_sources` → `keyframes` (`num_frames` when scene-aware) + '
+            '`audio_chunks` (ASR) '
             '→ dedupe → select → summarize → (Path 3 compact) → assembled context → synthesis.\n',
             'pipeline-map',
         ),
         cell(
             'code',
             "vs = pxt.get_table('video_benchmarking.video_sources')\n"
-            "keyframes = pxt.get_table('video_benchmarking.keyframes')\n"
-            "audio = pxt.get_table('video_benchmarking.audio_chunks')\n",
+            "keyframes = pxt.get_table('video_benchmarking.keyframes', if_not_exists='ignore')\n"
+            "audio = pxt.get_table('video_benchmarking.audio_chunks', if_not_exists='ignore')\n"
+            "print('keyframes:', None if keyframes is None else 'ok')\n"
+            "print('audio_chunks:', None if audio is None else 'ok')\n",
             'handles',
         ),
         cell('code', 'vs.describe()\n', 'describe'),
-        cell('markdown', '## 1 — Segmentation\n', 'sec-seg'),
+        cell('markdown', '## 1 — Scene cuts on the parent table\n', 'sec-seg'),
         cell('code', 'vs.select(vs.scene_cuts, vs.segment_times).tail(1)\n', 'scene-cuts'),
         cell(
             'code',
@@ -81,20 +83,32 @@ def main() -> None:
         cell('markdown', '## 2 — Vision (keyframes)\n', 'sec-vision'),
         cell(
             'code',
-            'keyframes.select(\n'
-            '    keyframes.global_position_ms,\n'
-            '    keyframes.gemini_frame_insight,\n'
-            '    keyframes.oss_frame_insight,\n'
-            ').order_by(keyframes.global_position_ms).limit(8).collect()\n',
+            'if keyframes is None:\n'
+            "    print('No keyframes view (Path 1-only catalog).')\n"
+            'else:\n'
+            '    cols = [keyframes.global_position_ms]\n'
+            "    if 'gemini_frame_insight' in keyframes.columns():\n"
+            '        cols.append(keyframes.gemini_frame_insight)\n'
+            "    if 'oss_frame_insight' in keyframes.columns():\n"
+            '        cols.append(keyframes.oss_frame_insight)\n'
+            '    keyframes.select(*cols).order_by(\n'
+            '        keyframes.global_position_ms\n'
+            '    ).limit(8).collect()\n',
             'kf-compare',
         ),
         cell(
             'code',
-            'keyframes.select(\n'
-            '    keyframes.frame,\n'
-            '    keyframes.gemini_frame_insight,\n'
-            '    keyframes.oss_frame_insight,\n'
-            ').order_by(keyframes.global_position_ms).limit(1).collect()\n',
+            'if keyframes is None:\n'
+            "    print('No keyframes view.')\n"
+            'else:\n'
+            '    cols = [keyframes.frame]\n'
+            "    if 'gemini_frame_insight' in keyframes.columns():\n"
+            '        cols.append(keyframes.gemini_frame_insight)\n'
+            "    if 'oss_frame_insight' in keyframes.columns():\n"
+            '        cols.append(keyframes.oss_frame_insight)\n'
+            '    keyframes.select(*cols).order_by(\n'
+            '        keyframes.global_position_ms\n'
+            '    ).limit(1).collect()\n',
             'kf-frame',
         ),
         cell('markdown', '## 3 — ASR (audio chunks)\n', 'sec-asr'),
@@ -321,7 +335,12 @@ def main() -> None:
             ').collect()\n',
             'errors',
         ),
-        cell('code', '!pxt dashboard\n', 'dashboard'),
+        cell(
+            'code',
+            "print('Inspect with: pxt ls video_benchmarking')\n"
+            "print('               pxt rows video_benchmarking/video_sources -n 1')\n",
+            'inspect-cli',
+        ),
     ]
 
     nb['cells'] = cells

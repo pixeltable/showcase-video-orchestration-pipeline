@@ -1,4 +1,4 @@
-"""Video-MME cost-bounded dev slice (Paths 1–2, stratified MCQs)."""
+"""Video-MME cost-bounded dev slice (Paths 1,2,3,5; default 1+2)."""
 
 from __future__ import annotations
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -11,6 +12,7 @@ import pixeltable as pxt
 from video_benchmark import pipeline
 from video_benchmark.config import ASSETS_DIR, DEFAULT_SAMPLE, PURSUIT_VIDEO_URL, BenchmarkConfig
 from video_benchmark.paths import DEFAULT_PATHS
+from video_benchmark.schema import CATALOG_DIR
 
 
 def ensure_sample_video(video_path: Path | None = None) -> str:
@@ -28,7 +30,7 @@ def ensure_sample_video(video_path: Path | None = None) -> str:
 
 
 def _warn_list_context(vs: pxt.Table, column: str, label: str) -> None:
-    if not hasattr(vs, column):
+    if not _has_column(vs, column):
         return
     rows = vs.select(getattr(vs, column)).tail(1).to_pandas()
     if rows.empty:
@@ -40,7 +42,10 @@ def _warn_list_context(vs: pxt.Table, column: str, label: str) -> None:
 
 
 def _has_column(vs: pxt.Table, column: str) -> bool:
-    return hasattr(vs, column)
+    try:
+        return column in vs.columns()
+    except Exception:
+        return hasattr(vs, column)
 
 
 def _recompute_column(vs: pxt.Table, column: str, *, cascade: bool = False) -> None:
@@ -88,7 +93,7 @@ def run_benchmark(
     )
     if config.benchmark_tune_tag:
         print(f'Tune tag: {config.benchmark_tune_tag}')
-    requested_asr = __import__('os').environ.get('OSS_ASR', 'whisperx').strip().lower()
+    requested_asr = os.environ.get('OSS_ASR', 'whisperx').strip().lower()
     if '3' in active and requested_asr == 'whisperx' and config.oss_asr == 'whisper':
         print(
             'Note: OSS_ASR=whisperx requested but HF_TOKEN is missing; '
@@ -114,7 +119,9 @@ def run_benchmark(
         _recompute_column(vs, 'gemini_transcript_context')
         _warn_list_context(vs, 'gemini_transcript_context', 'gemini_transcript_context')
         _recompute_column(vs, 'gemini_asr_cost')
-        _recompute_column(vs, 'gemini_frame_context')
+        # Batched vision is the paid multi-image UDF; insert already ran it.
+        if config.gemini_vision_mode != 'batched':
+            _recompute_column(vs, 'gemini_frame_context')
         _recompute_column(vs, 'gemini_vision_rollup')
         _recompute_column(vs, 'gemini_vision_track_cost')
         _recompute_column(vs, 'gemini_frame_context_deduped')
@@ -144,35 +151,37 @@ def run_benchmark(
         _warn_list_context(vs, 'oss_frame_context_summarized', 'oss_frame_context_summarized')
         _recompute_column(vs, 'oss_frame_context_compact')
         _warn_list_context(vs, 'oss_frame_context_compact', 'oss_frame_context_compact')
-        _recompute_column(vs, 'oss_context', cascade=True)
+        _recompute_column(vs, 'oss_context')
+        _recompute_column(vs, 'oss_synthesis_prompt_text')
         _recompute_column(vs, 'oss_insight')
 
-    # Path 4: Native fal (optional)
-    if '4' in active and config.enable_fal and hasattr(vs, 'fal_insight'):
-        _recompute_column(vs, 'fal_video_url')
-        _recompute_column(vs, 'fal_request')
-        _recompute_column(vs, 'fal_insight')
-        _recompute_column(vs, 'fal_cost')
-        _recompute_column(vs, 'cost_delta_native_vs_fal')
-    elif '4' in active and not config.enable_fal:
+    # Paths 4/5 run on insert; recomputing fal_video_url would re-upload without
+    # re-running fal_response.
+    if '4' in active and not config.enable_fal:
         print(
             'Soft-skip Path 4: set ENABLE_FAL=1 and FAL_KEY (pip install -e ".[fal]").',
             file=sys.stderr,
         )
+    elif '4' in active and not _has_column(vs, 'fal_insight'):
+        print(
+            'Soft-skip Path 4: fal columns missing (use --reset with --paths including 4).',
+            file=sys.stderr,
+        )
 
-    # Path 5: Native Nova (optional)
-    if '5' in active and config.enable_nova and hasattr(vs, 'nova_insight'):
-        _recompute_column(vs, 'nova_insight')
-        _recompute_column(vs, 'nova_cost')
-        _recompute_column(vs, 'cost_delta_native_vs_nova')
-    elif '5' in active and not config.enable_nova:
+    if '5' in active and not config.enable_nova:
         print(
             'Soft-skip Path 5: set ENABLE_NOVA=1 and AWS/Bedrock creds '
             '(pip install -e ".[bedrock]").',
             file=sys.stderr,
         )
+    elif '5' in active and not _has_column(vs, 'nova_insight'):
+        print(
+            'Soft-skip Path 5: nova columns missing (use --reset with --paths including 5).',
+            file=sys.stderr,
+        )
 
 
 def reset_catalog() -> None:
-    print('Resetting video_benchmarking catalog ...')
-    pxt.drop_dir('video_benchmarking', force=True, if_not_exists='ignore')
+    print(f'Resetting {CATALOG_DIR} catalog ...')
+    pxt.drop_dir(CATALOG_DIR, force=True, if_not_exists='ignore')
+    pipeline.clear_handles()

@@ -8,7 +8,7 @@ While the industry is moving toward **Native Multimodal Models (NMMs)** for deep
 
 This repository grounds that debate in a **declarative, reproducible Pixeltable pipeline** (not ad-hoc scripts), with exported `results/<timestamp>/` artifacts for paper appendices. Native baselines include **Gemini**, optional **fal video-understanding**, and optional **Amazon Nova** (Bedrock)—same analysis prompt for fair API comparison.
 
-**Paper:** [docs/paper/paper.md](paper/paper.md) · [docs/paper/paper.pdf](paper/paper.pdf) (build: `python scripts/build_paper_figures.py && ./scripts/build_paper.sh`). Headline five-path export: `results/20260710T040910Z` (`fair_v1_nova_pro`).
+**Paper:** [docs/paper/paper.md](paper/paper.md) (build PDF: `python scripts/build_paper_figures.py && ./scripts/build_paper.sh`). Headline export: [`results/golden/`](../results/golden/) (`fair_v1_nova_pro`). Pursuit Path 5 defaults to Nova **Pro**; Video-MME prefers **Lite** unless `NOVA_MODEL_ID` is set.
 
 ---
 
@@ -30,11 +30,11 @@ Path 1 and Path 2 use the **same Gemini model** so differences reflect **archite
 
 ## Debate 1: Early fusion vs late fusion (Path 1 vs Path 3)
 
-**Late-fusion bottleneck (old Path 3):** BLIP generic captions → text-only LLM never sees pixels. If the caption omits a detail, the model cannot recover it.
+**Late-fusion bottleneck:** generic captions → text-only LLM never sees pixels. If the caption omits a detail, the model cannot recover it.
 
 **Native advantage (Path 1):** Visual tokens processed alongside text from early transformer layers (*Scaling Laws for Native Multimodal Models*, Apple/CVF 2025; *Toward Native Multimodal Modeling*, arXiv 2605.25343).
 
-**Our fix (new Path 3):** `llama_cpp.create_chat_completion` with `image_url` + `frame_prompt(query)` per keyframe—same orchestration shape as Path 2, local GGUF auto-download from Hugging Face. Scene-aware sampling + compact captions + 7B synthesis close the gap toward native-style structured summaries.
+**Path 3:** `llama_cpp.create_chat_completion` with `image_url` + `frame_prompt(query)` per keyframe—same orchestration shape as Path 2, local GGUF auto-download from Hugging Face.
 
 ---
 
@@ -61,17 +61,14 @@ Related work:
 
 Quantitative eval via Hugging Face [`lmms-lab/Video-MME`](https://huggingface.co/datasets/lmms-lab/Video-MME) annotations + `yt-dlp` downloads.
 
-**Dev slice (implemented):** stratified **30 questions** (~10 short / medium / long), Gemini **Paths 1–2**, Path **3 OSS** (local VLM + 7B; **shared Gemini ASR**), Path **5 Nova Lite** (default). fal omitted (120s cap). Shared Path 2/3 frame prep once per video; per-question MCQ; exact-match A–D + `cost_per_correct`.
+**Dev slice (implemented):** stratified **30 questions** (~10 short / medium / long). Default paths are **1,2**. Path **3** (local VLM + 7B; **shared Gemini ASR**, which is paid) and Path **5** (Nova **Lite** unless `NOVA_MODEL_ID` is set; Pursuit Path 5 is Pro) are opt-in. fal omitted (120s cap).
 
 ```bash
 pip install -e ".[videomme]"
-./scripts/run_videomme_dev.sh          # or: run-videomme-dev
-# subset: run-videomme-dev --paths 1,2,5 --skip-oss
-# sample + download only (no model spend):
-run-videomme-dev --sample-only --fresh-sample
+run-videomme-dev --paths 1,2 --reset
 ```
 
-Exports land in `results/videomme-dev/<timestamp>/`. Manifest: `assets/videomme/sample_manifest.json`. Reference fixed Gemini-only run: `results/videomme-dev/20260711T025812Z`. Four-path (1/2/3/5) run: `results/videomme-dev/20260711T052512Z` (+ `COMPARISON.md`).
+Exports land in local `results/videomme-dev/` (gitignored). Numbers and invalid-run notes: [LAB_RESULTS.md](LAB_RESULTS.md).
 
 **Full set (900 V / 2700 Q):** still planned — do not run without an explicit budget.
 
@@ -84,7 +81,7 @@ Exports land in `results/videomme-dev/<timestamp>/`. Manifest: `assets/videomme/
 | Pursuit qualitative (255s) | Done | Narrative + cost |
 | Pursuit golden export | Done — `results/golden/` (`fair_v1_nova_pro`) | Showcase + paper appendix |
 | Tune A/B (lab only) | Done — not part of showcase story | Heuristic sweeps under `results/tune-ab/` |
-| Video-MME dev (30 Q) | Done — Paths 1,2,3,5; see `results/videomme-dev/20260711T052512Z` | MCQ accuracy + cost/correct |
+| Video-MME dev (30 Q) | Done — default paths 1,2; 3 and 5 opt-in. Local exports are gitignored; see [LAB_RESULTS.md](LAB_RESULTS.md) | MCQ accuracy + cost/correct |
 | Video-MME Nova S3 / long-byte fix | Gap — Bedrock ValidationException on most inline uploads | S3 URI or size gate |
 | Video-MME full (900 V) | Planned | Stratified accuracy + cost/correct |
 

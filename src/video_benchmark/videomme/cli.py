@@ -15,8 +15,8 @@ from video_benchmark.videomme.runner import parse_paths, run_videomme_dev
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=(
-            'Video-MME dev slice: stratified MCQs — Gemini Paths 1–2, '
-            'Path 3 OSS, Path 5 Nova (fal omitted)'
+            'Video-MME stratified MCQ slice (Pixeltable 0.7.8 TableModel). '
+            'Default paths 1,2; Path 3 OSS and Path 5 Nova are opt-in. Fal omitted.'
         )
     )
     p.add_argument('--n', type=int, default=None, help='Number of questions (default 30)')
@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         '--reset',
         action='store_true',
-        help='Drop and recreate the videomme/ Pixeltable catalog',
+        help='Drop and recreate the videomme catalog (required after --paths or schema changes)',
     )
     p.add_argument(
         '--fresh-sample',
@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
         '--paths',
         type=str,
         default=None,
-        help='Comma-separated paths to run: 1,2,3,5 (default all)',
+        help='Comma-separated paths to run: 1,2,3,5 (default 1,2)',
     )
     p.add_argument('--skip-oss', action='store_true', help='Skip Path 3 OSS')
     p.add_argument('--skip-nova', action='store_true', help='Skip Path 5 Nova')
@@ -68,14 +68,18 @@ def main() -> int:
         paths.discard('3')
     if args.skip_nova:
         paths.discard('5')
+    if not paths:
+        print('Error: no paths selected after --skip-* flags.', file=sys.stderr)
+        return 1
 
-    need_gemini = bool(paths & {'1', '2'})
+    need_gemini = bool(paths & {'1', '2', '3'})
     if need_gemini and not (
         os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY')
     ):
         if not args.sample_only:
             print(
-                'Error: set GOOGLE_API_KEY or GEMINI_API_KEY for Gemini Paths 1–2.',
+                'Error: set GOOGLE_API_KEY or GEMINI_API_KEY for Gemini Paths 1–2 '
+                '(Path 3 also uses shared Gemini ASR).',
                 file=sys.stderr,
             )
             return 1

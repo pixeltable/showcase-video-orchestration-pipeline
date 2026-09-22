@@ -15,6 +15,18 @@ from video_benchmark import pipeline
 from video_benchmark.config import PROJECT_ROOT, BenchmarkConfig, config_manifest_dict
 
 
+def _finite_float(value, default: float = 0.0) -> float:
+    try:
+        if value is None or pd.isna(value):
+            return default
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number != number:
+        return default
+    return number
+
+
 def _frame_count_from_row(row: pd.Series) -> int:
     frame_context = row.get('gemini_frame_context')
     if isinstance(frame_context, list):
@@ -44,8 +56,17 @@ def _synthesis_frame_count_from_row(row: pd.Series) -> int:
     return 0
 
 
+def _table_has_column(table, name: str) -> bool:
+    try:
+        return name in table.columns()
+    except Exception:
+        return hasattr(table, name)
+
+
 def _optional_col(name: str):
     if pipeline.video_sources is None:
+        return None
+    if not _table_has_column(pipeline.video_sources, name):
         return None
     return getattr(pipeline.video_sources, name, None)
 
@@ -90,8 +111,10 @@ def _latest_video_row() -> pd.Series | None:
 
 
 def build_comparison_dataframe() -> pd.DataFrame:
-    if pipeline.keyframes is None or pipeline.video_sources is None:
+    if pipeline.video_sources is None:
         raise RuntimeError('Pipeline not initialized')
+    if pipeline.keyframes is None:
+        return pd.DataFrame()
 
     summary_names = [
         'query',
@@ -124,8 +147,8 @@ def build_comparison_dataframe() -> pd.DataFrame:
 
     # Per-keyframe Gemini columns exist only in per_frame mode; batched mode
     # stores insights on the parent gemini_frame_context list.
-    has_per_frame_gemini = hasattr(pipeline.keyframes, 'gemini_frame_insight')
-    has_oss_frame = hasattr(pipeline.keyframes, 'oss_frame_insight')
+    has_per_frame_gemini = _table_has_column(pipeline.keyframes, 'gemini_frame_insight')
+    has_oss_frame = _table_has_column(pipeline.keyframes, 'oss_frame_insight')
     select_kwargs: dict = {
         'frame_position': pipeline.keyframes.global_position_ms,
         'segment_start': pipeline.keyframes.segment_start,
@@ -215,7 +238,24 @@ def _oss_asr_label(oss_asr: str) -> str:
     return mapping.get((oss_asr or '').strip().lower(), oss_asr or 'Whisper')
 
 
-def format_three_way_report(row: pd.Series, config: BenchmarkConfig) -> str:
+def _report_paths(row: pd.Series, config: BenchmarkConfig, paths: set[str] | None) -> set[str]:
+    if paths is not None:
+        return set(paths)
+    active = {'1', '2'}
+    if row.get('oss_insight'):
+        active.add('3')
+    if config.enable_fal or row.get('fal_insight'):
+        active.add('4')
+    if config.enable_nova or row.get('nova_insight'):
+        active.add('5')
+    return active
+
+
+def format_three_way_report(
+    row: pd.Series,
+    config: BenchmarkConfig,
+    paths: set[str] | None = None,
+) -> str:
     sep = '=' * 64
     dash = '-' * 64
     asr_label = _oss_asr_label(config.oss_asr)
@@ -229,87 +269,120 @@ def format_three_way_report(row: pd.Series, config: BenchmarkConfig) -> str:
     synth_frames = int(row.get('gemini_synthesis_frame_count', 0) or 0)
     fal_cost = row.get('fal_cost')
     nova_cost_val = row.get('nova_cost')
+    active = _report_paths(row, config, paths)
     lines = [
         sep,
         f'QUERY: {row.get("query", "")}',
         dash,
         'COSTS (heuristic; uses API usage_metadata when available)',
-        f'  native_cost                  ${float(row.get("native_cost", 0) or 0):.3f}',
-        f'  gemini_orchestrated_total    '
-        f'${float(row.get("gemini_orchestrated_total", 0) or 0):.3f}',
-        f'    vision_track               ${vision_cost:.3f}'
-        + (f'  ({vision_frames} API frames)' if vision_frames else ''),
-        f'    asr                        ${asr_cost:.3f}',
-        f'    synthesis                  ${synth_cost:.3f}'
-        + (f'  ({synth_frames} frames in context)' if synth_frames else ''),
-        f'  oss_cost                     ${float(row.get("oss_cost", 0) or 0):.3f}',
     ]
-    if fal_cost is not None and not (isinstance(fal_cost, float) and pd.isna(fal_cost)):
+    if '1' in active:
+        lines.append(
+            f'  native_cost                  ${float(row.get("native_cost", 0) or 0):.3f}'
+        )
+    if '2' in active:
+        lines.extend(
+            [
+                f'  gemini_orchestrated_total    '
+                f'${float(row.get("gemini_orchestrated_total", 0) or 0):.3f}',
+                f'    vision_track               ${vision_cost:.3f}'
+                + (f'  ({vision_frames} API frames)' if vision_frames else ''),
+                f'    asr                        ${asr_cost:.3f}',
+                f'    synthesis                  ${synth_cost:.3f}'
+                + (f'  ({synth_frames} frames in context)' if synth_frames else ''),
+            ]
+        )
+    if '3' in active:
+        lines.append(
+            f'  oss_cost                     ${float(row.get("oss_cost", 0) or 0):.3f}'
+        )
+    if '4' in active and fal_cost is not None and not (
+        isinstance(fal_cost, float) and pd.isna(fal_cost)
+    ):
         lines.append(
             f'  fal_cost                     ${float(fal_cost or 0):.3f}'
             '  (input capped at 120s; API max ~122s)'
         )
-    if nova_cost_val is not None and not (
+    if '5' in active and nova_cost_val is not None and not (
         isinstance(nova_cost_val, float) and pd.isna(nova_cost_val)
     ):
         lines.append(f'  nova_cost                    ${float(nova_cost_val or 0):.3f}')
-    lines.append(
-        '  cost_delta_native_vs_gemini  '
-        f'${float(row.get("cost_delta_native_vs_gemini", 0) or 0):.3f}'
-    )
-    if row.get('cost_delta_native_vs_fal') is not None and not pd.isna(
+    if {'1', '2'} <= active:
+        lines.append(
+            '  cost_delta_native_vs_gemini  '
+            f'${float(row.get("cost_delta_native_vs_gemini", 0) or 0):.3f}'
+        )
+    if '4' in active and row.get('cost_delta_native_vs_fal') is not None and not pd.isna(
         row.get('cost_delta_native_vs_fal')
     ):
         lines.append(
             '  cost_delta_native_vs_fal     '
             f'${float(row.get("cost_delta_native_vs_fal", 0) or 0):.3f}'
         )
-    if row.get('cost_delta_native_vs_nova') is not None and not pd.isna(
+    if '5' in active and row.get('cost_delta_native_vs_nova') is not None and not pd.isna(
         row.get('cost_delta_native_vs_nova')
     ):
         lines.append(
             '  cost_delta_native_vs_nova    '
             f'${float(row.get("cost_delta_native_vs_nova", 0) or 0):.3f}'
         )
-    lines.extend(
-        [
-            sep,
-            f'PATH 1 — NATIVE GEMINI ({config.gemini_model} on full video)',
-            str(row.get('native_insight', '') or ''),
-            '',
-            'PATH 2 — GEMINI ORCHESTRATED (keyframes + gemini.transcribe + multimodal synthesis)',
-            str(row.get('gemini_orchestrated_insight', '') or ''),
-            '',
-            f'PATH 3 — {path3_label}',
-            str(row.get('oss_insight', '') or ''),
-        ]
-    )
-    if config.enable_fal or row.get('fal_insight'):
+    lines.append(sep)
+    if '1' in active:
         lines.extend(
             [
+                f'PATH 1 — NATIVE GEMINI ({config.gemini_model} on full video)',
+                str(row.get('native_insight', '') or ''),
                 '',
+            ]
+        )
+    if '2' in active:
+        lines.extend(
+            [
+                'PATH 2 — GEMINI ORCHESTRATED '
+                '(keyframes + gemini.transcribe + multimodal synthesis)',
+                str(row.get('gemini_orchestrated_insight', '') or ''),
+                '',
+            ]
+        )
+    if '3' in active:
+        lines.extend(
+            [
+                f'PATH 3 — {path3_label}',
+                str(row.get('oss_insight', '') or ''),
+                '',
+            ]
+        )
+    if '4' in active:
+        lines.extend(
+            [
                 'PATH 4 — NATIVE FAL (fal-ai/video-understanding; input capped at 120s)',
                 str(row.get('fal_insight', '') or '(skipped — set FAL_KEY to enable)'),
+                '',
             ]
         )
-    if config.enable_nova or row.get('nova_insight'):
+    if '5' in active:
         lines.extend(
             [
-                '',
                 f'PATH 5 — NATIVE NOVA ({config.nova_model_id} via Bedrock)',
                 str(row.get('nova_insight', '') or '(skipped — set AWS/Bedrock creds to enable)'),
+                '',
             ]
         )
+    if lines[-1] == '':
+        lines.pop()
     lines.append(sep)
     return '\n'.join(lines)
 
 
-def print_three_way_comparison(config: BenchmarkConfig) -> None:
+def print_three_way_comparison(
+    config: BenchmarkConfig,
+    paths: set[str] | None = None,
+) -> None:
     row = _latest_video_row()
     if row is None:
         print('No video_sources rows to compare.')
         return
-    print(format_three_way_report(row, config))
+    print(format_three_way_report(row, config, paths=paths))
 
 
 def _git_commit() -> str | None:
@@ -331,6 +404,7 @@ def export_run(
     export_dir: Path,
     video_path: str,
     query: str,
+    paths: set[str] | None = None,
 ) -> Path:
     row = _latest_video_row()
     if row is None:
@@ -357,55 +431,74 @@ def export_run(
         'query': query,
         'config': config_manifest_dict(config),
     }
+    active = _report_paths(row, config, paths)
     summary = {
         'query': row.get('query', ''),
-        'video_duration_sec': float(row.get('video_duration_sec', 0) or 0),
+        'video_duration_sec': _finite_float(row.get('video_duration_sec', 0)),
         'keyframe_count': frame_count,
         'gemini_synthesis_frame_count': synth_frame_count,
         'audio_chunk_count': audio_chunk_count,
-        'native_cost': float(row.get('native_cost', 0) or 0),
-        'gemini_orchestrated_total': float(row.get('gemini_orchestrated_total', 0) or 0),
-        'gemini_vision_track_cost': float(row.get('gemini_vision_track_cost', 0) or 0),
-        'gemini_asr_cost': float(row.get('gemini_asr_cost', 0) or 0),
-        'gemini_synthesis_cost': float(row.get('gemini_synthesis_cost', 0) or 0),
-        'oss_cost': float(row.get('oss_cost', 0) or 0),
-        'cost_delta_native_vs_gemini': float(row.get('cost_delta_native_vs_gemini', 0) or 0),
+        'paths': sorted(active),
         'cost_note': (
             'Heuristic estimates; native/synthesis/vision use usage_metadata when present. '
             'fal_cost is $0.01 per 5s on input capped at 120s (API max ~122s); '
             'nova_cost uses Bedrock token rates (default Nova Pro). '
-            'vision_track sums all vision API frames; synthesis uses the capped frame context.'
+            'vision_track sums all vision API frames; synthesis uses the capped frame context. '
+            'Cost keys are included only for the paths selected in this run.'
         ),
     }
-    if (
-        'fal_cost' in row.index
-        and row.get('fal_cost') is not None
-        and not pd.isna(row.get('fal_cost'))
-    ):
-        summary['fal_cost'] = float(row.get('fal_cost') or 0)
-        summary['cost_delta_native_vs_fal'] = float(row.get('cost_delta_native_vs_fal', 0) or 0)
-    if 'nova_cost' in row.index and row.get('nova_cost') is not None and not pd.isna(
-        row.get('nova_cost')
-    ):
-        summary['nova_cost'] = float(row.get('nova_cost') or 0)
-        summary['cost_delta_native_vs_nova'] = float(row.get('cost_delta_native_vs_nova', 0) or 0)
+    if '1' in active:
+        summary['native_cost'] = _finite_float(row.get('native_cost'))
+    if '2' in active:
+        summary['gemini_orchestrated_total'] = _finite_float(row.get('gemini_orchestrated_total'))
+        summary['gemini_vision_track_cost'] = _finite_float(row.get('gemini_vision_track_cost'))
+        summary['gemini_asr_cost'] = _finite_float(row.get('gemini_asr_cost'))
+        summary['gemini_synthesis_cost'] = _finite_float(row.get('gemini_synthesis_cost'))
+    if '3' in active:
+        summary['oss_cost'] = _finite_float(row.get('oss_cost'))
+    if {'1', '2'} <= active:
+        summary['cost_delta_native_vs_gemini'] = _finite_float(
+            row.get('cost_delta_native_vs_gemini')
+        )
+    if '4' in active:
+        summary['fal_cost'] = _finite_float(row.get('fal_cost'))
+        summary['cost_delta_native_vs_fal'] = _finite_float(row.get('cost_delta_native_vs_fal'))
+    if '5' in active:
+        summary['nova_cost'] = _finite_float(row.get('nova_cost'))
+        summary['cost_delta_native_vs_nova'] = _finite_float(row.get('cost_delta_native_vs_nova'))
 
-    insights = {
-        'native_insight': row.get('native_insight', ''),
-        'gemini_orchestrated_insight': row.get('gemini_orchestrated_insight', ''),
-        'oss_insight': row.get('oss_insight', ''),
-    }
-    if 'fal_insight' in row.index:
-        insights['fal_insight'] = row.get('fal_insight', '')
-    if 'nova_insight' in row.index:
-        insights['nova_insight'] = row.get('nova_insight', '')
+    insights = {}
+    if '1' in active:
+        insights['native_insight'] = '' if pd.isna(row.get('native_insight')) else row.get(
+            'native_insight', ''
+        )
+    if '2' in active:
+        insights['gemini_orchestrated_insight'] = (
+            ''
+            if pd.isna(row.get('gemini_orchestrated_insight'))
+            else row.get('gemini_orchestrated_insight', '')
+        )
+    if '3' in active:
+        insights['oss_insight'] = '' if pd.isna(row.get('oss_insight')) else row.get(
+            'oss_insight', ''
+        )
+    if '4' in active:
+        insights['fal_insight'] = '' if pd.isna(row.get('fal_insight')) else row.get(
+            'fal_insight', ''
+        )
+    if '5' in active:
+        insights['nova_insight'] = '' if pd.isna(row.get('nova_insight')) else row.get(
+            'nova_insight', ''
+        )
 
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2))
     (out / 'summary.json').write_text(json.dumps(summary, indent=2))
     (out / 'insights.json').write_text(json.dumps(insights, indent=2))
-    (out / 'REPORT.md').write_text(format_three_way_report(row, config))
+    (out / 'REPORT.md').write_text(format_three_way_report(row, config, paths=paths))
 
-    frame_df = build_comparison_dataframe()
-    frame_df.to_csv(out / 'keyframes.csv', index=False)
+    if pipeline.keyframes is not None:
+        frame_df = build_comparison_dataframe()
+        if not frame_df.empty:
+            frame_df.to_csv(out / 'keyframes.csv', index=False)
 
     return out

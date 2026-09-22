@@ -21,7 +21,7 @@ from video_benchmark.oss_providers import oss_frame_insight_expr
 from video_benchmark.udfs import (
     GEMINI_25_FLASH_INPUT_PER_M,
     asr_cost_from_transcripts,
-    assemble_benchmark_context,
+    assemble_mcq_evidence,
     compact_frame_context,
     dedupe_frame_context,
     estimate_image_tokens,
@@ -113,13 +113,6 @@ def build_core_models(config: BenchmarkConfig) -> type:
     return TableModel
 
 
-def model_column_names(table_model_base: type, table_name: str) -> set[str]:
-    models = table_model_base.__registered_models__
-    if table_name not in models:
-        return set()
-    return set(models[table_name].__columns__)
-
-
 def build_parent_models(
     config: BenchmarkConfig,
     *,
@@ -159,8 +152,7 @@ def build_parent_models(
             gemini_frame_context_summarized = summarize_frame_context(
                 gemini_frame_context_deduped, config.frame_context_max_entries
             )
-        shared_context = assemble_benchmark_context(
-            'Answer upcoming multiple-choice questions about this video.',
+        shared_context = assemble_mcq_evidence(
             gemini_transcript_context,
             gemini_frame_context_summarized,
             'Gemini',
@@ -215,8 +207,7 @@ def build_oss_keyframe_models(
             gemini_frame_context_summarized = summarize_frame_context(
                 gemini_frame_context_deduped, config.frame_context_max_entries
             )
-        shared_context = assemble_benchmark_context(
-            'Answer upcoming multiple-choice questions about this video.',
+        shared_context = assemble_mcq_evidence(
             gemini_transcript_context,
             gemini_frame_context_summarized,
             'Gemini',
@@ -308,8 +299,7 @@ def build_oss_parent_models(
             gemini_frame_context_summarized = summarize_frame_context(
                 gemini_frame_context_deduped, config.frame_context_max_entries
             )
-        shared_context = assemble_benchmark_context(
-            'Answer upcoming multiple-choice questions about this video.',
+        shared_context = assemble_mcq_evidence(
             gemini_transcript_context,
             gemini_frame_context_summarized,
             'Gemini',
@@ -336,8 +326,7 @@ def build_oss_parent_models(
         oss_frame_context_compact = compact_frame_context(
             oss_frame_context_summarized, config.oss_frame_insight_max_chars
         )
-        oss_shared_context = assemble_benchmark_context(
-            'Answer upcoming multiple-choice questions about this video.',
+        oss_shared_context = assemble_mcq_evidence(
             gemini_transcript_context,
             oss_frame_context_compact,
             'OSS',

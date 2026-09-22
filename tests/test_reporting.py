@@ -85,6 +85,25 @@ def test_format_three_way_report_contains_paths():
     assert '16 frames in context' in report
 
 
+def test_format_report_hides_path3_when_not_selected():
+    row = pd.Series(
+        {
+            'query': 'Test?',
+            'native_insight': 'native',
+            'gemini_orchestrated_insight': 'gemini',
+            'oss_insight': 'oss leftover',
+            'native_cost': 0.1,
+            'gemini_orchestrated_total': 0.05,
+            'oss_cost': 0.0,
+        }
+    )
+    report = format_three_way_report(row, _sample_config(), paths={'1', '2'})
+    assert 'PATH 1' in report
+    assert 'PATH 2' in report
+    assert 'PATH 3' not in report
+    assert 'oss leftover' not in report
+
+
 def test_format_report_includes_fal_and_nova_when_enabled():
     row = pd.Series(
         {
@@ -139,10 +158,114 @@ def test_frame_count_from_row_uses_frame_context_list():
     assert _frame_count_from_row(row) == 2
 
 
-def test_export_schema_keys(tmp_path: Path):
-    """Smoke test expected export file names."""
-    out = tmp_path / '20260101T000000Z'
-    out.mkdir()
-    for name in ('manifest.json', 'summary.json', 'insights.json', 'REPORT.md', 'keyframes.csv'):
-        (out / name).touch()
-    assert len(list(out.iterdir())) == 5
+def test_export_run_without_keyframes(tmp_path: Path, monkeypatch):
+    from video_benchmark import pipeline
+    from video_benchmark.reporting import export_run
+
+    class _Tail:
+        def __init__(self, df):
+            self._df = df
+
+        def to_pandas(self):
+            return self._df
+
+    class _Select:
+        def __init__(self, df):
+            self._df = df
+
+        def tail(self, _n):
+            return _Tail(self._df)
+
+        def collect(self):
+            return self
+
+        def to_pandas(self):
+            return self._df
+
+    class FakeVS:
+        def columns(self):
+            return ['query', 'video_duration_sec', 'native_insight', 'native_cost']
+
+        def __getattr__(self, name):
+            return name
+
+        def select(self, *cols):
+            return _Select(
+                pd.DataFrame(
+                    [
+                        {
+                            'query': 'Q',
+                            'video_duration_sec': 10.0,
+                            'native_insight': 'native only',
+                            'native_cost': 0.1,
+                        }
+                    ]
+                )
+            )
+
+    monkeypatch.setattr(pipeline, 'video_sources', FakeVS())
+    monkeypatch.setattr(pipeline, 'keyframes', None)
+    monkeypatch.setattr(pipeline, 'audio_chunks', None)
+    out = export_run(_sample_config(), tmp_path, '/tmp/v.mp4', 'Q', paths={'1'})
+    assert (out / 'REPORT.md').exists()
+    assert (out / 'summary.json').exists()
+    assert not (out / 'keyframes.csv').exists()
+    assert 'PATH 1' in (out / 'REPORT.md').read_text()
+    assert 'PATH 3' not in (out / 'REPORT.md').read_text()
+    summary = json.loads((out / 'summary.json').read_text())
+    assert summary['native_cost'] == 0.1
+    assert 'oss_cost' not in summary
+    assert 'gemini_orchestrated_total' not in summary
+
+
+def test_export_run_coerces_nan_costs(tmp_path: Path, monkeypatch):
+    from video_benchmark import pipeline
+    from video_benchmark.reporting import export_run
+
+    class _Tail:
+        def __init__(self, df):
+            self._df = df
+
+        def to_pandas(self):
+            return self._df
+
+    class _Select:
+        def __init__(self, df):
+            self._df = df
+
+        def tail(self, _n):
+            return _Tail(self._df)
+
+        def collect(self):
+            return self
+
+        def to_pandas(self):
+            return self._df
+
+    class FakeVS:
+        def columns(self):
+            return ['query', 'video_duration_sec', 'native_insight', 'native_cost']
+
+        def __getattr__(self, name):
+            return name
+
+        def select(self, *cols):
+            return _Select(
+                pd.DataFrame(
+                    [
+                        {
+                            'query': 'Q',
+                            'video_duration_sec': 10.0,
+                            'native_insight': 'native only',
+                            'native_cost': float('nan'),
+                        }
+                    ]
+                )
+            )
+
+    monkeypatch.setattr(pipeline, 'video_sources', FakeVS())
+    monkeypatch.setattr(pipeline, 'keyframes', None)
+    monkeypatch.setattr(pipeline, 'audio_chunks', None)
+    out = export_run(_sample_config(), tmp_path, '/tmp/v.mp4', 'Q', paths={'1'})
+    summary = json.loads((out / 'summary.json').read_text())
+    assert summary['native_cost'] == 0.0

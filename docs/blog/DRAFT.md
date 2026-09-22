@@ -1,7 +1,7 @@
 # Blog draft: Take back control of video understanding
 
 > Status: draft for Pixeltable blog / companion to the paper.  
-> Repo: this showcase · Paper: [docs/paper/paper.pdf](../paper/paper.pdf)
+> Repo: [pixeltable/showcase-video-orchestration-pipeline](https://github.com/pixeltable/showcase-video-orchestration-pipeline) · Paper: [docs/paper/paper.md](../paper/paper.md) · Pixeltable 0.7.8 TableModel CLI
 
 ## Working title
 
@@ -25,13 +25,13 @@ On a fixed long-form narrative clip, **same-model Gemini orchestration costs ~66
 
 1. **The industry story** — early-fusion NMMs vs production late fusion (link Apple/CVF scaling + roadmap papers).
 2. **The fairness problem** — different models, prompts, and cherry-picked clips make demos incomparable.
-3. **Three architectures, one catalog**
+3. **Five paths, one catalog** (4–5 are optional natives)
    - Path 1: native Gemini video
    - Path 2: scene-aware keyframes + `gemini.transcribe` + multimodal synth
    - Path 3: Qwen2.5-VL + WhisperX + Qwen2.5-7B
 4. **Headline result** — Pursuit ~255s: $0.114 vs $0.039; Path 2 hits unpaid-internship / punchline / “tonight”.
 5. **Video-MME sneak peek** — objective MCQ slice: orchestration stays far cheaper per correct; OSS trails; Nova needs S3 for long clips.
-6. **How to try it** — `pip install -e ".[demo]"` → `run-benchmark --paths 1,2` → open `REPORT.md`.
+6. **How to try it** — `pip install -e ".[demo]"` → `run-benchmark --paths 1,2 --reset` → open `REPORT.md`.
 7. **Customize** — point to `examples/orchestrated.env` and `examples/oss.env`.
 8. **CTA** — star the repo, read the paper, bring your own video.
 

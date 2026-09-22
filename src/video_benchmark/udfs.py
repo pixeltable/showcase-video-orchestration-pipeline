@@ -461,6 +461,51 @@ def assemble_benchmark_context(
     )
 
 
+def _assemble_mcq_evidence_impl(
+    transcript_context: list | None,
+    frame_context: list | None,
+    vision_label: str = 'Vision',
+) -> str:
+    """Transcript + keyframe timeline only — no Pursuit essay rubric."""
+    parts = ['Evidence for upcoming multiple-choice questions about this video.']
+    transcript_lines: list[str] = []
+    for item in transcript_context or []:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get('text', '')).strip()
+        start = float(item.get('segment_start', 0.0))
+        if not _is_usable_transcript_chunk(text, start):
+            continue
+        transcript_lines.append(_format_transcript_line(item))
+    transcript_str = (
+        '\n'.join(transcript_lines) if transcript_lines else '[no speech detected in audio chunks]'
+    )
+    parts.append(f'\n<audio_transcript>\n{transcript_str}\n</audio_transcript>')
+    frame_lines: list[str] = []
+    for item in frame_context or []:
+        if not isinstance(item, dict):
+            continue
+        pos_msec = float(item.get('pos_msec', 0.0))
+        segment_start = float(item.get('segment_start', 0.0))
+        insight = str(item.get('frame_insight', '')).strip() or '(none)'
+        frame_lines.append(
+            f'[{pos_msec / 1000.0:.2f}s | segment {segment_start:.1f}s] '
+            f'{vision_label}: {insight}'
+        )
+    frame_str = '\n'.join(frame_lines) if frame_lines else 'N/A'
+    parts.append(f'\n<visual_keyframe_timeline>\n{frame_str}\n</visual_keyframe_timeline>')
+    return '\n'.join(parts)
+
+
+@pxt.udf
+def assemble_mcq_evidence(
+    transcript_context: list | None,
+    frame_context: list | None,
+    vision_label: str = 'Vision',
+) -> str:
+    return _assemble_mcq_evidence_impl(transcript_context, frame_context, vision_label)
+
+
 def _gemini_synthesis_prompt_impl(
     context: str | None,
     video_duration_sec: float | None = None,

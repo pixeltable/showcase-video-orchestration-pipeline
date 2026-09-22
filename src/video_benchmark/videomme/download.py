@@ -19,6 +19,14 @@ def video_file_path(video_id: str, assets_dir: Path | None = None) -> Path:
     return root / 'videos' / f'{video_id}.mp4'
 
 
+def _discard_partials(video_id: str, out: Path) -> None:
+    for path in out.parent.glob(f'{video_id}.*'):
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
 def download_video(
     *,
     video_id: str,
@@ -77,8 +85,10 @@ def download_video(
             check=False,
         )
     except subprocess.TimeoutExpired:
+        _discard_partials(video_id, out)
         return None
     if proc.returncode != 0:
+        _discard_partials(video_id, out)
         return None
     if out.exists() and out.stat().st_size > 0:
         return out
@@ -88,6 +98,7 @@ def download_video(
             if m != out:
                 m.replace(out)
             return out if out.exists() else None
+    _discard_partials(video_id, out)
     return None
 
 

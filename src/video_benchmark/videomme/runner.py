@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from video_benchmark.config import BenchmarkConfig, load_config
+from video_benchmark.paths import parse_paths as parse_path_spec
 from video_benchmark.videomme import DEFAULT_N, DEFAULT_SEED, VIDEOME_ASSETS
 from video_benchmark.videomme import pipeline as vm_pipeline
 from video_benchmark.videomme.download import download_videos, video_file_path
@@ -28,7 +29,8 @@ from video_benchmark.videomme.sample import (
 )
 from video_benchmark.videomme.scoring import amortize_shared_cost, window_shared_context
 
-DEFAULT_PATHS = frozenset({'1', '2', '3', '5'})
+ALLOWED_PATHS = frozenset({'1', '2', '3', '5'})
+DEFAULT_PATHS = frozenset({'1', '2'})
 
 
 def _recompute(vs, column: str) -> None:
@@ -38,25 +40,41 @@ def _recompute(vs, column: str) -> None:
 
 
 def parse_paths(raw: str | None) -> set[str]:
-    if not raw or not str(raw).strip():
-        return set(DEFAULT_PATHS)
-    parts = {p.strip() for p in str(raw).split(',') if p.strip()}
-    unknown = parts - DEFAULT_PATHS
-    if unknown:
-        raise ValueError(f'Unknown paths {unknown}; use subset of 1,2,3,5')
-    return parts
+    return parse_path_spec(raw, allowed=ALLOWED_PATHS, default=DEFAULT_PATHS)
+
+
+OSS_SYNTH_MAX_CHARS = 16_000
 
 
 def apply_videomme_frame_defaults(config: BenchmarkConfig) -> BenchmarkConfig:
-    """Bump sample/select budgets for Video-MME when env not explicitly set."""
-    if os.environ.get('VISION_SAMPLE_KEYFRAMES') is not None:
-        return config
+    """Bump Video-MME frame budgets unless a VIDEOME_* override is set.
+
+    Pursuit VISION_SAMPLE_KEYFRAMES in .env.example must not block the bump.
+    """
+    sample_raw = os.environ.get('VIDEOME_VISION_SAMPLE_KEYFRAMES')
+    select_raw = os.environ.get('VIDEOME_FRAME_SELECT_BUDGET')
+    cap_raw = os.environ.get('VIDEOME_FRAME_CONTEXT_MAX_ENTRIES')
     return replace(
         config,
-        vision_sample_keyframes=32,
-        frame_select_budget=max(config.frame_select_budget, 24),
-        frame_context_max_entries=max(config.frame_context_max_entries, 24),
+        vision_sample_keyframes=(
+            int(sample_raw) if sample_raw else max(config.vision_sample_keyframes, 32)
+        ),
+        frame_select_budget=(
+            int(select_raw) if select_raw else max(config.frame_select_budget, 24)
+        ),
+        frame_context_max_entries=(
+            int(cap_raw) if cap_raw else max(config.frame_context_max_entries, 24)
+        ),
     )
+
+
+def manifest_is_reusable(existing: dict[str, Any] | None, *, n: int, seed: int) -> bool:
+    if not existing or not existing.get('downloads'):
+        return False
+    if existing.get('seed') != seed or existing.get('n') != n:
+        return False
+    questions = existing.get('questions') or []
+    return len(questions) >= n
 
 
 def prepare_sample_and_downloads(
@@ -76,7 +94,7 @@ def prepare_sample_and_downloads(
 
     if reuse_manifest:
         existing = load_manifest(root / 'sample_manifest.json')
-        if existing and existing.get('downloads') and len(existing.get('questions') or []) >= n:
+        if manifest_is_reusable(existing, n=n, seed=seed):
             downloads = {
                 k: v
                 for k, v in existing['downloads'].items()
@@ -289,7 +307,7 @@ def run_questions(
     *,
     paths: set[str] | None = None,
 ) -> list[dict[str, Any]]:
-    active = paths or set(DEFAULT_PATHS)
+    active = set(paths) if paths is not None else set(DEFAULT_PATHS)
     predictions: list[dict[str, Any]] = []
     for i, q in enumerate(questions, start=1):
         vid = q['video_id']
@@ -311,9 +329,11 @@ def run_questions(
             str(shared.get('shared_context') or ''),
             video_duration_sec=dur,
         )
+        oss_raw_ctx = str(shared.get('oss_shared_context') or '')
         oss_ctx = window_shared_context(
-            str(shared.get('oss_shared_context') or shared.get('shared_context') or ''),
+            oss_raw_ctx,
             video_duration_sec=dur,
+            max_chars=OSS_SYNTH_MAX_CHARS,
         )
 
         native_raw, native_letter, native_cost = '', None, 0.0
@@ -346,7 +366,9 @@ def run_questions(
                 print(f'  orchestrated failed: {exc}', flush=True)
                 orch_raw, orch_letter, orch_cost = f'ERROR: {exc}', None, 0.0
 
-        if '3' in active:
+        if '3' in active and not oss_raw_ctx.strip():
+            oss_raw, oss_letter, oss_cost = 'ERROR: missing oss_shared_context', None, 0.0
+        elif '3' in active:
             try:
                 oss_raw, oss_letter, oss_cost = oss_mcq_answer(
                     shared_context=oss_ctx,
@@ -361,14 +383,20 @@ def run_questions(
                 print(f'  oss failed: {exc}', flush=True)
                 oss_raw, oss_letter, oss_cost = f'ERROR: {exc}', None, 0.0
 
-        if '5' in active:
+        if '5' in active and not config.enable_nova:
+            nova_raw, nova_letter, nova_c = (
+                'ERROR: Nova disabled (set ENABLE_NOVA=1 and AWS/Bedrock creds)',
+                None,
+                0.0,
+            )
+        elif '5' in active:
             try:
                 nova_raw, nova_letter, nova_c = nova_mcq_answer(
                     video_path=path,
                     question=q['question'],
                     options=list(q.get('options') or []),
                     model_id=config.nova_model_id,
-                    s3_uri=config.nova_video_s3_uri,
+                    s3_uri='',
                     input_rate_per_m=config.nova_input_usd_per_1m,
                     output_rate_per_m=config.nova_output_usd_per_1m,
                 )
@@ -429,7 +457,7 @@ def run_videomme_dev(
     # Prefer Nova Lite for Video-MME unless user already set a model.
     if os.environ.get('NOVA_MODEL_ID') is None and 'nova-pro' in (cfg.nova_model_id or ''):
         cfg = replace(cfg, nova_model_id='amazon.nova-lite-v1:0')
-    active = paths or set(DEFAULT_PATHS)
+    active = set(paths) if paths is not None else set(DEFAULT_PATHS)
     questions, downloads = prepare_sample_and_downloads(
         n=n, seed=seed, assets_dir=assets_dir, reuse_manifest=reuse_manifest
     )
@@ -440,8 +468,20 @@ def run_videomme_dev(
             p = video_file_path(vid, assets_dir)
             if p.exists():
                 downloads[vid] = str(p.resolve())
-    video_shared = run_shared_path2(cfg, downloads, video_meta, reset=reset)
-    if '3' in active:
-        run_shared_path3(cfg, video_shared)
+    if {'2', '3'} & active:
+        video_shared = run_shared_path2(cfg, downloads, video_meta, reset=reset)
+        if '3' in active:
+            run_shared_path3(cfg, video_shared)
+    else:
+        video_shared = {
+            vid: {
+                'shared_context': '',
+                'oss_shared_context': '',
+                'video_duration_sec': 0.0,
+                'shared_cost': 0.0,
+                'oss_shared_cost': 0.0,
+            }
+            for vid in downloads
+        }
     predictions = run_questions(cfg, questions, downloads, video_shared, paths=active)
     return predictions, video_shared, cfg

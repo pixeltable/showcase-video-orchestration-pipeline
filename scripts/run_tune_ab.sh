@@ -7,7 +7,7 @@ cd "$ROOT"
 source .venv/bin/activate
 
 if ! python -c "import whisperx" >/dev/null 2>&1; then
-  pip install -e ".[whisperx]" -q
+  pip install -e ".[oss]" -q
 fi
 
 if [[ -z "${HF_TOKEN:-}" && -z "${HUGGING_FACE_HUB_TOKEN:-}" ]]; then

@@ -60,6 +60,15 @@ def test_whisperx_kept_when_hf_token_present(monkeypatch):
     assert cfg.oss_asr == 'whisperx'
 
 
+def test_oss_asr_rejects_unknown(monkeypatch):
+    import pytest
+
+    monkeypatch.setattr('video_benchmark.config.load_dotenv', lambda env_path=None: None)
+    monkeypatch.setenv('OSS_ASR', 'foo')
+    with pytest.raises(ValueError, match='OSS_ASR'):
+        load_config()
+
+
 def test_config_manifest_includes_vision_reference_duration(monkeypatch):
     monkeypatch.setattr('video_benchmark.config.load_dotenv', lambda env_path=None: None)
     monkeypatch.setenv('HF_TOKEN', 'hf_test_token')

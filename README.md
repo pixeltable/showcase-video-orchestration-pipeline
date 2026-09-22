@@ -1,23 +1,25 @@
-# Pixeltable Video Orchestration Benchmark
+# Pixeltable showcase: video orchestration pipeline
 
 [![CI](https://github.com/pixeltable/showcase-video-orchestration-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/pixeltable/showcase-video-orchestration-pipeline/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
-**Own the stack.** Native multimodal APIs process whole videos in one opaque call. Modular pipelines—keyframes, ASR, synthesis—let you **inspect, budget, and swap** every stage. This [Pixeltable](https://pixeltable.com) showcase runs both on the same clip and the same question so you can measure the tradeoff yourself.
+Five-path **CLI** (`run-benchmark` / `run-videomme-dev`) on Pixeltable **0.7.8 `TableModel` + `update_all()`**. Catalogs: `video_benchmarking/` (Pursuit) and `videomme/`. This is a batch benchmark, not a FastAPI / `pxt service` app.
 
-| | Path 1 — Native Gemini | Path 2 — Orchestrated Gemini | Path 3 — Open source |
-|--|------------------------|------------------------------|----------------------|
-| Idea | Full video → one API call | Sparse frames + ASR → synth | Local VLM + WhisperX + 7B |
-| Control | Low | High (frames, ASR, prompts) | Full (offline) |
-| Typical cost (Pursuit ~255s) | ~$0.11 | ~$0.039 (~66% less) | $0 API |
+Native multimodal APIs process a whole video in one opaque call. Modular pipelines—keyframes, ASR, synthesis—let you **inspect, budget, and swap** every stage. Same clip, same question.
 
-Paths 1 and 2 use the **same** `gemini-2.5-flash` model—differences are architecture, not vendor marketing. Optional Path 4 (fal, 120s cap) and Path 5 (Nova / Bedrock) are provider baselines, not the hero story.
+| | Path 1 Native Gemini | Path 2 Orchestrated Gemini | Path 3 Open source | Path 4 fal | Path 5 Nova |
+|--|----------------------|----------------------------|--------------------|------------|-------------|
+| Idea | Full video → one API call | Sparse frames + ASR → multimodal synth | Local VLM + WhisperX + 7B | `fal-ai/video-understanding` | Bedrock `converse` |
+| Control | Low | High | Full (offline) | Low (120s cap) | Low |
+| Typical cost (Pursuit ~255s) | ~$0.11 | ~$0.039 (~66% less) | $0 API | $0.24 | $0.060 |
 
-**Paper:** [docs/paper/paper.md](docs/paper/paper.md) · [PDF](docs/paper/paper.pdf)  
+Paths 1 and 2 use the **same** `gemini-2.5-flash` model. Paths 4–5 are optional provider baselines.
+
+**Paper:** [docs/paper/paper.md](docs/paper/paper.md) (PDF: `./scripts/build_paper.sh`)  
 **Blog draft:** [docs/blog/DRAFT.md](docs/blog/DRAFT.md)  
 **Golden export:** [results/golden/](results/golden/) (`fair_v1_nova_pro`)  
-**Static side-by-side:** [docs/showcase.html](docs/showcase.html) (`python scripts/render_showcase.py`)  
+**Static side-by-side:** [docs/showcase.html](docs/showcase.html)  
 **Lab notes:** [docs/LAB_RESULTS.md](docs/LAB_RESULTS.md)
 
 ---
@@ -25,50 +27,58 @@ Paths 1 and 2 use the **same** `gemini-2.5-flash` model—differences are archit
 ## Quick start (Paths 1 + 2)
 
 ```bash
+git clone https://github.com/pixeltable/showcase-video-orchestration-pipeline
+cd showcase-video-orchestration-pipeline
 python3.12 -m venv .venv && source .venv/bin/activate
-pip install -e ".[demo]"
-cp .env.example .env          # set GOOGLE_API_KEY
+pip install -e ".[demo]"   # alias for the base Gemini install
+cp .env.example .env       # set GOOGLE_API_KEY
 python scripts/download_sample.py
 
 run-benchmark --paths 1,2 --reset
 ```
 
-Requires **Pixeltable 0.7.8** (`TableModel` class schemas). Use `--reset` when changing `--paths` or after a schema change so the catalog matches this package.
+Use **`--reset`** whenever you change `--paths` or the schema. Path-gated `TableModel` columns are not migrated in place.
 
-Read `results/<timestamp>/REPORT.md` for side-by-side answers and costs.
+Read `results/<timestamp>/REPORT.md`. Path 1-only exports skip `keyframes.csv`.
 
 ---
 
-## Recipes
+## Other recipes
 
-### 1. Native only — what the vendor default costs
+**Native only**
 
 ```bash
 run-benchmark --paths 1 --reset
 ```
 
-### 2. Orchestrated — Pixeltable modular control
+**Orchestrated only** — optional: `cp examples/orchestrated.env .env`
 
 ```bash
-# optional: cp examples/orchestrated.env .env
 run-benchmark --paths 2 --reset
 ```
 
-Tune: `VISION_SAMPLE_KEYFRAMES`, `FRAME_SELECT_BUDGET`, `GEMINI_SYNTH_MAX_IMAGES` (see [examples/orchestrated.env](examples/orchestrated.env)).
-
-### 3. Open source — take the stack offline
+**Open source**
 
 ```bash
-pip install -e ".[oss]"       # whisperx + expects llama-cpp-python
+pip install -e ".[oss]"       # whisperx; install llama-cpp-python separately
 cp examples/oss.env .env      # HF_TOKEN for WhisperX diarization
 run-benchmark --paths 3 --reset
 ```
 
-### 4. Compare (default showcase)
+**Gemini A/B + OSS**
 
 ```bash
-run-benchmark --paths 1,2 --reset          # Gemini A/B
-run-benchmark --paths 1,2,3 --reset        # + OSS when installed
+run-benchmark --paths 1,2,3 --reset
+```
+
+**Optional Path 4 / Path 5**
+
+```bash
+pip install -e ".[fal]"       # ENABLE_FAL=1 and FAL_KEY
+run-benchmark --paths 4 --reset
+
+pip install -e ".[bedrock]"   # ENABLE_NOVA=1 and AWS/Bedrock creds
+run-benchmark --paths 5 --reset   # Pursuit default: Nova Pro
 ```
 
 ---
@@ -85,20 +95,20 @@ From [results/golden/summary.json](results/golden/summary.json) on the *Pursuit 
 | fal (120s cap) | $0.24 |
 | Nova Pro | $0.060 |
 
-Path 2 recovers the late unpaid-internship / “tonight” beats with inspectable keyframes + transcript—see [results/golden/REPORT.md](results/golden/REPORT.md).
+Path 2 recovers the late unpaid-internship / “tonight” beats — [results/golden/REPORT.md](results/golden/REPORT.md).
 
 ---
 
 ## Optional: Video-MME (quantitative)
 
-Stratified 30-Q MCQ eval (Gemini 1–2, OSS, Nova; fal omitted):
+Stratified 30-Q MCQ eval. Default paths are **1,2** (same as Pursuit). Path 3 uses **shared Gemini ASR** (paid) plus local VLM captions (not WhisperX). Wrapper / unset `NOVA_MODEL_ID` prefers Nova **Lite**; Pursuit Path 5 defaults to **Pro**. Video-MME raises sample/select to **32 / 24** even when `.env` sets the Pursuit 24/16 knobs. Override with `VIDEOME_VISION_SAMPLE_KEYFRAMES` and `VIDEOME_FRAME_SELECT_BUDGET`. Architecture: [docs/WORKFLOW.md](docs/WORKFLOW.md).
 
 ```bash
 pip install -e ".[videomme]"
-run-videomme-dev --paths 1,2
+run-videomme-dev --paths 1,2 --reset
 ```
 
-Reference: `results/videomme-dev/20260711T025812Z` (Gemini, ASR-fixed). Four-path notes: `…/20260711T052512Z/COMPARISON.md`. Contaminated early run `…T012446Z` is invalid—ignore it.
+Exports land in local `results/videomme-dev/` (gitignored). Numbers: [docs/LAB_RESULTS.md](docs/LAB_RESULTS.md) and [docs/paper/paper.md](docs/paper/paper.md).
 
 ---
 
@@ -106,24 +116,14 @@ Reference: `results/videomme-dev/20260711T025812Z` (Gemini, ASR-fixed). Four-pat
 
 | Knob | Default | Effect |
 |------|---------|--------|
-| `VISION_SAMPLE_KEYFRAMES` | 24 | Even samples across the timeline |
+| `VISION_SAMPLE_KEYFRAMES` | 24 | Even samples (`num_frames`); unused when scene-aware is off and `MAX_VISION_KEYFRAMES` is set |
 | `FRAME_SELECT_BUDGET` | 16 | Keep frames near scene cuts |
 | `GEMINI_SYNTH_MAX_IMAGES` | 8 | Images re-attached at Path 2 synth |
 | `GEMINI_MODEL` | `gemini-2.5-flash` | Paths 1–2 |
 | `OSS_*` / `OSS_ASR` | see examples | Path 3 models / ASR |
 | Prompts | `udfs.py`, `videomme/prompts.py` | Frame + synthesis wording |
 
-Full env reference: [docs/WORKFLOW.md](docs/WORKFLOW.md). Architecture diagrams live there too.
-
----
-
-## Inspect catalog
-
-```bash
-./scripts/notebook.sh    # video-benchmark kernel
-```
-
-Power-user only—CLI is the front door.
+Inspect the catalog with `pxt ls` / `pxt rows`. Operator detail: [docs/WORKFLOW.md](docs/WORKFLOW.md). The notebook is power-user only and assumes a modular catalog.
 
 ---
 
@@ -131,10 +131,9 @@ Power-user only—CLI is the front door.
 
 ```
 src/video_benchmark/     # Pursuit catalog + CLI (schema.py = TableModel)
-  videomme/              # optional Video-MME eval (schema.py = TableModel)
-docs/paper/              # research write-up + PDF
-docs/blog/               # narrative draft
-docs/showcase.html       # static path comparison
+  videomme/              # optional Video-MME eval
+docs/paper/              # research write-up
+docs/showcase.html       # static Path 1–3 cards; 4–5 live in golden REPORT
 examples/                # recipe .env files
 results/golden/          # committed headline export
 ```
@@ -146,10 +145,10 @@ results/golden/          # committed headline export
 ```bash
 pip install -e ".[dev,demo]"
 pytest
-ruff check src tests
+ruff check src tests scripts
 ```
 
-Tune A/B sweeps (`scripts/run_tune_ab.sh`) are **lab tooling**—not required for the showcase.
+Tune A/B sweeps (`scripts/run_tune_ab.sh`) are lab tooling.
 
 ## License
 
