@@ -1,374 +1,108 @@
-# Video Benchmark Workflow
+# Workflow
 
-Five paths answer the **same question** about the **same video**, using different strategies. All paths live in the Pixeltable **0.7.8** catalog `video_benchmarking/`, declared as path-gated `TableModel` classes and applied with `TableModel.update_all()`. Paths 4–5 soft-skip without credentials. Use **`--reset`** when changing paths or after a schema change.
+Every path answers the same question about the same video. The paths live in one Pixeltable catalog per benchmark, declared as a `TableModel` graph and applied with a single `update_all()`. Each stage is a computed column: insert a row and Pixeltable runs the stages, stores every intermediate result, and records failed calls per cell.
 
-**Default model:** `gemini-2.5-flash` (Path 1 and Path 2). Override with `GEMINI_MODEL`. Path 5 defaults to **Nova Pro** (`amazon.nova-pro-v1:0`). Path 4 (**fal**) auto-trims input to **120s** (API max ~122s) and bills ~$0.01 per 5s of that capped clip — often costlier than Gemini native on long samples.
+Start with `run-media-demo` for a generated local clip and real video, image, and audio transforms without provider calls. The benchmark graphs extend that same SDK model with response JSON, usage, evidence selection, and answer columns. Importing schema modules does not mutate the catalog.
 
-**Default frame pipeline:** `SCENE_AWARE_FRAMES=1` → sample **24** frames evenly (`num_frames`) → keep **16** near scene cuts (spread across the full timeline) → Path 2 synthesizes with up to **16** captions + up to **8** keyframe images; Path 3 compact-caps to **16** × 240 chars. Path 3 ASR defaults to **WhisperX** (falls back to Whisper without `HF_TOKEN`); synthesis defaults to **Qwen2.5-7B**.
+| Path | Mechanism | Model calls per video | Cost column |
+|------|-----------|-----------------------|-------------|
+| 1 | Whole video + question, one call | 1 | `native_cost` |
+| 1L | Path 1 at `media_resolution=LOW` (about 66 instead of 258 tokens per frame) | 1 | `native_low_cost` |
+| 2 | Keyframe captions + transcript, then one multimodal synthesis call | 24 captions, 1 transcript, 1 synthesis | `gemini_total_cost` |
+| 3 | The same keyframes captioned by a local VLM, local ASR, local synthesis | 0 API calls | `oss_cost` |
+| 4 | fal `video-understanding` on the first 120 s | 1 | `fal_cost` |
+| 5 | Amazon Nova on Bedrock (inline H.264 video under 18 MB, re-encoded when needed) | 1 | `nova_cost` |
 
-**Reference export (showcase):** [`results/golden/`](../results/golden/) (`fair_v1_nova_pro`). Historical lab timestamps live under `results/` locally (gitignored) — see [LAB_RESULTS.md](LAB_RESULTS.md).
+Paths 1, 1L, and 2 use the same Gemini model, so their differences come from the architecture alone.
 
-**CLI paths:** `run-benchmark --paths 1,2` (default) · `--paths 3` · `--paths 1,2,3` · optional `4`/`5` when fal/Nova enabled.
----
-
-## 1. Big picture — five paths side by side
+## The Pursuit catalog (`video_benchmarking`)
 
 ```mermaid
 flowchart LR
-    subgraph input [Input]
-        V["video + query"]
-    end
-
-    subgraph path1 [Path 1 — Native Gemini]
-        P1["One API call\nfull video in"]
-        P1out["native_insight"]
-    end
-
-    subgraph path2 [Path 2 — Gemini orchestrated]
-        P2split["Sample frames + audio"]
-        P2vision["Gemini per keyframe"]
-        P2audio["Gemini transcribe"]
-        P2merge["Assemble text + multimodal synthesis"]
-        P2out["gemini_orchestrated_insight"]
-    end
-
-    subgraph path3 [Path 3 — Open source]
-        P3split["Same frame sample"]
-        P3vision["Qwen2.5-VL GGUF\nper keyframe"]
-        P3audio["WhisperX diarize"]
-        P3merge["Compact frames + Qwen2.5-7B synth"]
-        P3out["oss_insight"]
-    end
-
-    subgraph path4 [Path 4 — Native fal]
-        P4["fal-ai/video-understanding"]
-        P4out["fal_insight"]
-    end
-
-    subgraph path5 [Path 5 — Native Nova]
-        P5["Bedrock converse\nNova video"]
-        P5out["nova_insight"]
-    end
-
-    V --> P1 --> P1out
-    V --> P2split --> P2vision --> P2merge
-    P2split --> P2audio --> P2merge
-    P2merge --> P2out
-    V --> P3split --> P3vision --> P3merge
-    P3split --> P3audio --> P3merge
-    P3merge --> P3out
-    V --> P4 --> P4out
-    V --> P5 --> P5out
+    R["runs<br/>run_id, video, query<br/>Paths 1, 1L, 4, 5"]
+    K["keyframes (view)<br/>frame_iterator, num_frames<br/>captions: Gemini, local VLM"]
+    A["audio_chunks (view)<br/>audio_splitter, one chunk<br/>transcripts: Gemini, WhisperX"]
+    S["syntheses<br/>run_id, video, query<br/>Paths 2, 3"]
+    R --> K
+    R --> A
+    K -. "@pxt.query by run_id" .-> S
+    A -. "@pxt.query by run_id" .-> S
 ```
 
-| | Path 1 Native Gemini | Path 2 Gemini orchestrated | Path 3 Open source | Path 4 Native fal | Path 5 Native Nova |
-|---|---|---|---|---|---|
-| **What goes in** | Whole `.mp4` + question | Sparse keyframe images + audio transcripts | Same frame sample as Path 2 | Public `video_url` + prompt (**≤120s**) | Video bytes/S3 + prompt |
-| **Vision** | Inside Gemini (opaque) | `generate_content` per sampled frame | `oss_frame_insight_llama` (Qwen2.5-VL + mmproj) | fal video-understanding | Nova Pro (default) 1 FPS sampling |
-| **Audio** | Inside Gemini (opaque) | `gemini.transcribe` (default: **full file**) | WhisperX diarize (or Whisper / Gemini ASR) | Inside fal | Inside Nova |
-| **Final step** | (same call) | Multimodal `generate_content` (text + ≤8 images) | `oss_insight_llama` (Qwen2.5-7B GGUF) | (same call) | (same call) |
-| **Output column** | `native_insight` | `gemini_orchestrated_insight` | `oss_insight` | `fal_insight` | `nova_insight` |
-| **Cost column** | `native_cost` | `gemini_orchestrated_total` | `oss_cost` (= $0) | `fal_cost` ($0.01/5s) | `nova_cost` |
+`run-benchmark` inserts one `runs` row, which fills the views, then one `syntheses` row whose columns query those views by `run_id`. The synthesis request therefore sees finished captions and transcripts before its intended answer call, subject to the retry policy below. Columns exist only for the selected paths, so an unselected path never spends.
 
----
+Stages of Path 2, each a column you can read:
 
-## 2. Pixeltable catalog — tables and views
-
-```mermaid
-flowchart TB
-    subgraph parent [video_sources table]
-        VS["video, query"]
-        SC["scene_cuts → segment_times"]
-        VSnative["Path 1: native_insight, native_cost"]
-        VSgemini["Path 2: gemini_orchestrated_insight\ngemini_orchestrated_total"]
-        VSoss["Path 3: oss_insight, oss_cost"]
-        VSfal["Path 4: fal_insight, fal_cost (optional)"]
-        VSnova["Path 5: nova_insight, nova_cost (optional)"]
-    end
-
-    subgraph views [Child views]
-        SEG["segments\nvideo_splitter — used when no frame budget"]
-        KF["keyframes\nframe_iterator on video_sources when frame budget on"]
-        AC["audio_chunks\naudio_splitter full|duration|max_size"]
-    end
-
-    VS --> KF
-    VS --> SEG
-    VS --> AC
-
-    KF --> KFgemini["gemini_frame_insight\nGemini 2.5 Flash"]
-    KF --> KFoss["oss_frame_insight\nQwen2.5-VL GGUF + mmproj"]
-
-    AC --> ACgemini["gemini_transcript_lines\nGemini diarized ASR"]
-    AC --> ACwx["whisperx_segment_lines\nwhen OSS_ASR=whisperx"]
-```
-
-With default frame budget, **keyframes attach to `video_sources`**, not `segments`. The `segments` view is created only when there is no frame budget (all-I-frames / `video_splitter` mode).
-
-**Query with `pxt`:**
+| Table | Column | Content |
+|-------|--------|---------|
+| `keyframes` | `gemini_caption_response`, `gemini_caption`, `gemini_caption_usage`, `gemini_caption_cost` | One caption call per sampled frame, thinking disabled |
+| `audio_chunks` | `gemini_asr_response`, `gemini_transcript`, `gemini_asr_usage`, `gemini_asr_cost` | Diarized transcript of the whole audio track, thinking disabled |
+| `syntheses` | `gemini_frames`, `gemini_transcript` | The run's captions and transcript lines |
+| `syntheses` | `gemini_selected`, `gemini_attached` | Frames kept near scene cuts (`FRAME_SELECT_BUDGET`), and the subset attached as images (`GEMINI_SYNTH_MAX_IMAGES`) |
+| `syntheses` | `gemini_prompt`, `gemini_contents` | The exact synthesis request |
+| `syntheses` | `gemini_response`, `gemini_answer`, `gemini_synthesis_cost`, `gemini_total_cost` | The answer, and captions + transcript + synthesis cost |
 
 ```bash
 pxt ls video_benchmarking
-pxt rows video_benchmarking/video_sources -n 1 --cols native_insight,gemini_orchestrated_insight
-# Path 3 catalog only:
-# pxt rows video_benchmarking/video_sources -n 1 --cols oss_insight
-# pxt rows video_benchmarking/keyframes -n 5 --cols global_position_ms,gemini_frame_insight,oss_frame_insight
+pxt rows video_benchmarking/keyframes -n 5 --cols position_sec,gemini_caption,gemini_caption_cost
+pxt rows video_benchmarking/syntheses -n 1 --cols gemini_prompt,gemini_answer,gemini_total_cost
 ```
 
----
-
-## 2.5 Video / frame pipeline for Paths 2 & 3
+## The Video-MME catalog (`videomme`)
 
 ```mermaid
-flowchart TD
-    V["full video.mp4"]
-    V --> SD["scene_cuts\nscene_detect_content"]
-    V --> FI["frame_iterator on video_sources\nnum_frames = VISION_SAMPLE_KEYFRAMES (default)"]
-    FI --> KF["~24 keyframe rows"]
-    KF --> VIS["Path 2 Gemini + Path 3 OSS vision"]
-    VIS --> DEDUPE["dedupe_frame_context"]
-    SD --> SELECT["select_scene_frames\nbudget FRAME_SELECT_BUDGET=16"]
-    DEDUPE --> SELECT
-    SELECT --> SUM["summarize_frame_context\nPath2 cap 16 / Path3 cap 16"]
-    SUM --> P2["Path 2 assemble + Gemini synth"]
-    SUM --> COMPACT["Path 3 compact_frame_context\nmax 240 chars"]
-    COMPACT --> P3["Path 3 assemble + 7B synth"]
+flowchart LR
+    V["videos<br/>video_id, video, scene_cuts"]
+    K["keyframes (view)<br/>captions once per video"]
+    A["audio_chunks (view)<br/>transcript once per video"]
+    Q["questions<br/>question, options, answer<br/>every path's letter, correctness, cost"]
+    V --> K
+    V --> A
+    K -. "@pxt.query by video_id" .-> Q
+    A -. "@pxt.query by video_id" .-> Q
+    V -. "scene cuts" .-> Q
 ```
 
-| Mode | When | Behavior |
-|------|------|----------|
-| **Scene-aware (default)** | `SCENE_AWARE_FRAMES=1` | Sample `VISION_SAMPLE_KEYFRAMES` (24) on full video; select `FRAME_SELECT_BUDGET` (16) near scene cuts |
-| **Uniform fps** | `SCENE_AWARE_FRAMES=0` and `MAX_VISION_KEYFRAMES>0` | Sample ~12 frames on full video |
-| **All I-frames per scene** | `SCENE_AWARE_FRAMES=0` and `MAX_VISION_KEYFRAMES=0` | `segments` → `frame_iterator(keyframes_only=True)` |
+Captions and the transcript are computed once per video and reused by that video's questions; only the answer call is per question. Video-MME captions are query-agnostic; Pursuit captions are conditioned on the run's question. The export splits each video's evidence cost (`orch_shared_cost`) evenly across its questions in the exported sample. `run-videomme` inserts missing rows, one video or six questions per insert. Completed batches survive interruption, and rerunning identical rows makes no new calls. A paid call interrupted before its insert commits can run again without its earlier usage being recorded.
 
-**Shared frame prep order (Path 2 and Path 3):** `dedupe → select_scene_frames → summarize` → Path 3 only: `compact`.
+## Cost accounting
 
-| Column | Path | Role |
-|--------|------|------|
-| `gemini_frame_context` / `oss_frame_context` | 2 / 3 | Full vision rollup lists |
-| `*_frame_context_deduped` | 2 / 3 | Near-duplicate captions removed |
-| `*_frame_context_selected` | 2 / 3 | Scene-aware keep (when enabled) |
-| `*_frame_context_summarized` | 2 / 3 | Cap to Path 2 `FRAME_CONTEXT_MAX_ENTRIES` (16) or Path 3 `OSS_FRAME_CONTEXT_MAX_ENTRIES` (16) |
-| `oss_frame_context_compact` | 3 | Short captions for 7B context window |
-| `whisperx_diarized` / `whisperx_segment_lines` | 3 | When `OSS_ASR=whisperx` |
-| `whisper_segment_lines` | 3 | When `OSS_ASR=whisper` |
-| `gemini_transcript_lines` | 2 (+ 3 if `OSS_ASR=gemini`) | Diarized Gemini ASR |
+Cost is computed from the token counts each response reports, never from text length:
 
-**Audio split mode** (`AUDIO_SPLIT_MODE`, default `full`): one transcribe call on the full MP3 by default.
+- Gemini: input tokens by modality (`prompt_tokens_details`: text, image, video, audio), cached input at the cache rate, and output tokens plus thinking tokens (`thoughts_token_count`) at the output rate.
+- Nova: Bedrock `usage.inputTokens` and `usage.outputTokens`.
+- fal: $0.01 per started 5 s of the trimmed clip (the published rate; the API reports no usage).
 
-**ASR gating:** Path 2 always runs Gemini ASR. Path 3 adds only Whisper **or** WhisperX columns (not both). When `OSS_ASR=gemini`, Path 3 reuses Gemini transcript lines.
+Rates live in [`src/video_benchmark/pricing.py`](../src/video_benchmark/pricing.py) with their snapshot date. Where responses contain usage, it is stored next to cost so it can be re-priced without another model call. Models must have a known rate before their costs can be computed.
 
----
+These are **response-accounted estimates**, not invoice totals. Historical fields named `billed`/`cost_usd` apply cached-input discounts to returned usage. Retries, interruption before commit, SDK parsing failures, and missing usage can leave paid attempts unrecorded. Local GPU/CPU time, storage, download/egress, taxes, and service charges are excluded. fal is a duration-based estimate because it supplies no token usage. A missing usage response or ambiguous mixed-modality cache allocation produces an accounting error and `null` cost; it is never called free. New reports count unknown-cost questions separately and expose known partial subtotals as `response_accounted_cost_usd`.
 
-## 2.6 Scene-aware frame selection
+All accuracy and accuracy-difference intervals resample entire videos. Paired tests exchange each video's path labels together, preserving dependence among its questions; their p-values are exploratory and unadjusted. Question-level Wilson intervals and McNemar p-values remain labeled diagnostics. Percentile bootstrap intervals can collapse at all-right/all-wrong boundaries on small strata; they do not establish certainty. Missing answers count as wrong on every attempted question. The saved benchmark is a local availability sample and has no equivalence-test design.
 
-`select_scene_frames` prefers frames near `scene_cuts` start times (up to half the budget), then fills remaining slots with timeline-spread samples. Both paths use the same selected set before their respective summarize caps.
+## Fairness rules
 
----
+- The answer-writing call of every path gets the same question and the same answer guidance ([`prompts.py`](../src/video_benchmark/prompts.py)); only the evidence differs.
+- Paths 2 and 3 caption the same sampled frames and select the same subset.
+- Perception calls (captions, transcription) run without thinking; answer-writing calls use the model's default thinking.
+- Path 1L is the cost-optimized native baseline, so orchestration is not compared only against an unoptimized native call.
 
-## 3. Path 1 — Native video (one hop)
+## Failures and changes
 
-Gemini sees the **entire video file** and hears audio internally. No splitting.
+- Inserts use `on_error='ignore'`: errors are stored on cells (`<column>.errortype` / `.errormsg`) and other paths continue. Transient failures get one retry scoped to their inserted batch. Type, value, import, and dependency setup failures are preserved for inspection; deterministic parsing errors do not trigger another paid model call.
+- A failed caption carries no evidence; synthesis runs on the remaining evidence and reports the failure. Missing response usage is unknown cost, not proof that an attempt was unbilled.
+- A call can also succeed with no text: Gemini stops a transcript that would recite copyrighted audio (`finish_reason` `RECITATION`) without raising an error, and the tokens are still billed. Exports count these as `empty_outputs` (Pursuit stages) and `<stage>_empty` (Video-MME `videos.jsonl`, and the evidence lines of `REPORT.md`).
+- On Pixeltable 0.7.15 a Gemini response with `candidates=None` still raises `'NoneType' object is not iterable` inside the built-in wrapper. The full refusal response and any usage are lost before storage; reports retain the cell error and unknown cost. The offline suite reproduces this SDK limitation. The application does not automatically repeat this deterministic failure to discover its block reason.
+- Catalog definitions include a digest of computation source, configuration, selected paths, and SDK version. This catches edits to UDF bodies that an expression-only schema diff can miss. A mismatch asks for `--reset`, which drops that benchmark catalog and keeps exports. Existing pre-upgrade catalogs also require rebuilding; export first.
+- Resuming skips already inserted rows, including persisted failures. After correcting a provider issue, use the table's `recompute_columns('<response>', errors_only=True, where=...)` deliberately; it may make paid calls. Synthesis queries are materialized lookups of another table: after updating captions/transcripts, explicitly recompute the request's evidence query columns and downstream synthesis. They are not a live join.
+- Silent video has no extracted audio; Pixeltable skips non-nullable audio calls. An empty transcript also can mean recitation, refusal, or a failed stage. Inspect responses and stage counters before interpreting `[no speech detected]` as evidence of silence.
 
-```mermaid
-flowchart TD
-    IN["Insert: video + query"] --> DUR["video_duration_sec"]
-    IN --> NAT["generate_content\nmodel = GEMINI_MODEL\ncontents = video + native_prompt"]
-    NAT --> RAW["native_response JSON"]
-    RAW --> TXT["gemini_text → native_insight"]
-    DUR --> TOK["estimate_video_tokens"]
-    TXT --> COST["native_cost"]
-    TOK --> COST
-```
+## Extend the graph
 
----
+| Change | Starting point | Validation |
+|--------|----------------|------------|
+| Add a media transform | Declare a computed column or iterator view; check `pixeltable.functions.video`, `.audio`, and `.image` first | Run the local media demo and inspect typed outputs |
+| Change a model/API | Replace its expression in `schema.py`; keep response and usage columns alongside the answer | Add a price entry and fake response fixture; start a new benchmark catalog |
+| Change business logic | Edit frame selection, transcript parsing, or prompts as versioned source | Test the affected transform and record the new definition digest |
+| Reuse evidence | Store query-agnostic preparation per video and query it from request rows, as Video-MME does | Verify multiple questions make one set of preparation calls |
 
-## 4. Path 2 — Gemini orchestrated
-
-```mermaid
-flowchart TD
-  subgraph vision [Vision]
-    V1["video"] --> FI["num_frames sample ~24 frames"]
-    FI --> GF["generate_content per frame"]
-    GF --> GFC["gemini_frame_context"]
-    GFC --> DED["dedupe → select → summarize"]
-  end
-
-  subgraph audio [Audio]
-    V1 --> EA["extract_audio mp3"]
-    EA --> GT["gemini.transcribe"]
-    GT --> GTL["gemini_transcript_lines"]
-  end
-
-  subgraph rollup [Synthesis]
-    DED --> ASM["assemble_benchmark_context"]
-    GTL --> ASM
-    ASM --> SYN["generate_content multimodal\ntext + ≤8 images"]
-    SYN --> GOI["gemini_orchestrated_insight"]
-  end
-```
-
-### API call counts (Path 2, default config)
-
-On a **~255s** Pursuit clip (`AUDIO_SPLIT_MODE=full`, `SCENE_AWARE_FRAMES=1`, `VISION_SAMPLE_KEYFRAMES=24`, `GEMINI_VISION_MODE=per_frame`):
-
-| Step | Gemini API calls |
-|------|------------------|
-| Vision (`generate_content` per keyframe) | **~24** |
-| ASR (`gemini.transcribe`) | **1** |
-| Synthesis (`generate_content` multimodal, ≤8 images) | **1** |
-| **Path 2 total** | **~26** |
-| Path 1 native (comparison) | **+1** full-video call |
-
-`summary.json` reports `keyframe_count` = vision API frames (~24) and `gemini_synthesis_frame_count` = frames in synthesis context after select/cap (~16). Vision track cost sums **all API frames**; synthesis uses the capped list.
-
-With `GEMINI_VISION_MODE=batched`, vision becomes **⌈N / batch_size⌉** multi-image calls; per-keyframe Gemini columns are omitted and export reads parent `gemini_frame_context`.
-
----
-
-## 5. Path 3 — Open source
-
-```mermaid
-flowchart TD
-  subgraph shared [Shared]
-    KF["keyframes view"]
-    AC["audio_chunks view"]
-  end
-
-  subgraph oss_vision [OSS vision]
-    KF --> VLM["oss_frame_insight_llama\nQwen2.5-VL-3B"]
-    VLM --> OFI["oss_frame_insight"]
-  end
-
-  subgraph oss_audio [OSS audio]
-    AC --> WX["whisperx.transcribe diarize"]
-    WX --> WXL["whisperx_segment_lines"]
-  end
-
-  subgraph oss_merge [OSS synthesis]
-    OFI --> PREP["dedupe → select → summarize → compact"]
-    WXL --> ASM["assemble_benchmark_context"]
-    PREP --> ASM
-    ASM --> SYN["oss_insight_llama\nQwen2.5-7B"]
-    SYN --> OI["oss_insight"]
-  end
-```
-
-| Step | API | Notes |
-|------|-----|-------|
-| Per-keyframe vision | `oss_frame_insight_llama` | Qwen2.5-VL-3B + mmproj |
-| Audio | WhisperX (default) | Requires `pip install -e ".[oss]"` + `HF_TOKEN` |
-| Frame prep | dedupe → select → summarize → **compact** | Cap **16** frames × **240** chars |
-| Synthesis | `oss_insight_llama` | Qwen2.5-7B, `n_ctx=8192`, `OSS_SYNTH_MAX_TOKENS=2048` |
-
----
-
-## 6. Catalog persistence — why `--reset` matters
-
-Each `run-benchmark` without `--reset` inserts a new `video_sources` row and more child rows. Reporting uses the **latest** parent row for insights/costs, but `keyframes.csv` exports the **entire** keyframes view.
-
-**For reproducible paper numbers, always use `--reset`:**
-
-```bash
-run-benchmark --paths 1,2 --reset --export results/
-```
-
----
-
-## 7. Insert lifecycle — recompute after insert
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant VS as video_sources
-    participant KF as keyframes view
-    participant AC as audio_chunks view
-
-    Note over User,AC: Default --paths 1,2 (no OSS columns)
-
-    User->>VS: insert video + query
-    VS->>VS: Path 1 native runs
-    VS->>AC: materialize audio chunks
-    VS->>KF: materialize keyframes
-    KF->>KF: gemini_frame_insight
-    AC->>AC: gemini ASR
-    User->>VS: recompute gemini_transcript_context + gemini_asr_cost
-    User->>VS: recompute gemini_frame_context + vision costs
-    User->>VS: recompute gemini_frame_context_deduped + selected + summarized
-    User->>VS: recompute gemini_orchestrated_context cascade
-    User->>VS: recompute gemini_orchestrated_insight + synthesis_cost + total
-    Note over User,VS: Path 3 only: oss_* frame/transcript/insight recomputes
-```
-
----
-
-## 8. Cost comparison
-
-| Metric | Approx (Pursuit ~255s, default) |
-|--------|----------------------------------|
-| `native_cost` | ~$0.114 |
-| `gemini_orchestrated_total` | ~$0.039 |
-| `gemini_vision_track_cost` | ~$0.017 (~24 API frames) |
-| `gemini_asr_cost` | ~$0.013 |
-| `gemini_synthesis_cost` | ~$0.008 (~16 context frames) |
-| `oss_cost` | $0.00 |
-
-**Heuristic disclaimer:** Cost columns use token heuristics in `udfs.py` (258 tokens/image + frame-prompt overhead, 263 tokens/sec video + native-prompt overhead, 32 tokens/sec audio). When Gemini returns `usageMetadata`, `resolved_gemini_cost` prefers **actual** prompt/candidate counts (`candidatesTokenCount` only — not `totalTokenCount`).
-
----
-
-## 9. Video-MME evaluation (dev slice)
-
-Cost-bounded phase-2 eval on [`lmms-lab/Video-MME`](https://huggingface.co/datasets/lmms-lab/Video-MME):
-
-- Stratified **30 questions** (short / medium / long)
-- Default CLI paths **1,2** (same as Pursuit). Opt-in **3** (OSS) and **5** (Nova); **fal omitted**
-- Path 3 reuses **shared Gemini ASR and Gemini keyframes** (those calls are paid) plus local VLM captions and a 7B MCQ synth. `oss_cost` / local synth is $0 API; it is not a free Gemini run
-- Catalog dir `videomme/` (separate from Pursuit `video_benchmarking/`)
-- Path 2/3: frames (+ OSS captions) once per video; MCQ synthesis per question
-- Unset frame env bumps sample/select to **32 / 24**
-- Pursuit Path 5 defaults Nova **Pro**; Video-MME prefers **Lite** unless `NOVA_MODEL_ID` is set
-- Metrics: exact-match letter (A–D), `cost_per_correct`, `ingest_failed` for empty native/Nova
-- CLI: `--paths 1,2`, `--paths 1,2,3,5`, `--skip-oss`, `--skip-nova`
-
-```bash
-pip install -e ".[videomme]"
-run-videomme-dev --paths 1,2 --reset
-# Env: VIDEOME_DEV_N=30 VIDEOME_DEV_SEED=42 VIDEOME_PATHS=1,2
-```
-
-Artifacts: `results/videomme-dev/<timestamp>/` (`summary.json`, `predictions.jsonl`, `REPORT.md`).
-
----
-
-## 10. File map
-
-| File | Role |
-|------|------|
-| [`src/video_benchmark/cli.py`](../src/video_benchmark/cli.py) | CLI: `run-benchmark` |
-| [`src/video_benchmark/config.py`](../src/video_benchmark/config.py) | Env → `BenchmarkConfig` |
-| [`src/video_benchmark/schema.py`](../src/video_benchmark/schema.py) | Pursuit `TableModel` classes + `update_all` |
-| [`src/video_benchmark/pipeline.py`](../src/video_benchmark/pipeline.py) | Bind catalog tables after schema apply |
-| [`src/video_benchmark/videomme/`](../src/video_benchmark/videomme/) | Video-MME dev slice (Paths 1,2,3,5; default 1+2) |
-| [`src/video_benchmark/runner.py`](../src/video_benchmark/runner.py) | Insert + recompute order |
-| [`src/video_benchmark/oss_providers.py`](../src/video_benchmark/oss_providers.py) | Path 3 vision + synthesis UDFs |
-| [`src/video_benchmark/udfs.py`](../src/video_benchmark/udfs.py) | Prompts, costing, frame prep |
-| [`src/video_benchmark/queries.py`](../src/video_benchmark/queries.py) | `@pxt.query` rollups |
-| [`src/video_benchmark/reporting.py`](../src/video_benchmark/reporting.py) | Path-gated comparison + export |
-| [`src/video_benchmark/scoring.py`](../src/video_benchmark/scoring.py) | Native-parity heuristics |
-
----
-
-## 11. Run it
-
-```bash
-pip install -e ".[dev,oss]"
-cp .env.example .env   # set GOOGLE_API_KEY and HF_TOKEN
-
-run-benchmark --paths 1,2 --reset --export results/
-
-# Lab only (not part of the showcase story):
-# ./scripts/run_tune_ab.sh
-```
-
-Full env defaults: [`.env.example`](../.env.example). Recipes: [`examples/orchestrated.env`](../examples/orchestrated.env), [`examples/oss.env`](../examples/oss.env).
+Benchmark reset rules freeze experiments. For a continuously running application, use Pixeltable schema migration and selective recomputation with an explicit policy for refreshing materialized query results. This repository is a local SDK and research showcase; authentication, upload quotas, background job admission, deployment, and invoice reconciliation are outside its validated scope.

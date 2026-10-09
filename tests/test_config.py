@@ -1,78 +1,110 @@
-"""Config default and env-fallback tests."""
+"""Config defaults and validation."""
 
 from __future__ import annotations
 
+import os
+
+import pytest
+
 from video_benchmark.config import config_manifest_dict, load_config
 
+KNOBS = (
+    'GEMINI_MODEL',
+    'VISION_SAMPLE_KEYFRAMES',
+    'FRAME_SELECT_BUDGET',
+    'GEMINI_SYNTH_MAX_IMAGES',
+    'OSS_SYNTH_MAX_TOKENS',
+    'OSS_FRAME_CAPTION_MAX_CHARS',
+    'OSS_ASR',
+    'HF_TOKEN',
+    'HUGGING_FACE_HUB_TOKEN',
+    'ENABLE_FAL',
+    'ENABLE_NOVA',
+    'FAL_KEY',
+    'FAL_API_KEY',
+    'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY',
+    'BEDROCK_API_KEY',
+    'NOVA_MODEL_ID',
+    'AWS_PROFILE',
+    'AWS_DEFAULT_PROFILE',
+    'AWS_BEARER_TOKEN_BEDROCK',
+)
 
-def test_load_config_defaults_match_canonical(monkeypatch):
-    # Clear knobs that would override code defaults.
-    for key in (
-        'SCENE_AWARE_FRAMES',
-        'OSS_SYNTH_REPO_ID',
-        'OSS_SYNTH_REPO_FILENAME',
-        'OSS_SYNTH_MAX_TOKENS',
-        'OSS_FRAME_CONTEXT_MAX_ENTRIES',
-        'OSS_FRAME_INSIGHT_MAX_CHARS',
-        'FRAME_CONTEXT_MAX_ENTRIES',
-        'VISION_SAMPLE_KEYFRAMES',
-        'FRAME_SELECT_BUDGET',
-        'GEMINI_SYNTH_MAX_IMAGES',
-        'ENABLE_FAL',
-        'ENABLE_NOVA',
-        'FAL_KEY',
-        'FAL_API_KEY',
-        'AWS_ACCESS_KEY_ID',
-        'AWS_SECRET_ACCESS_KEY',
-        'AWS_BEARER_TOKEN_BEDROCK',
-        'BEDROCK_API_KEY',
-        'OSS_ASR',
-        'HF_TOKEN',
-        'HUGGING_FACE_HUB_TOKEN',
-    ):
-        monkeypatch.delenv(key, raising=False)
 
-    # Avoid loading project .env secrets into this test process for ASR mode.
+@pytest.fixture
+def clean_env(monkeypatch):
+    for key in KNOBS:
+        # setenv first so teardown restores the key even if load_config() writes it.
+        monkeypatch.setenv(key, '')
+        monkeypatch.delenv(key)
+    # Keep the project .env (with real keys) out of the test process.
     monkeypatch.setattr('video_benchmark.config.load_dotenv', lambda env_path=None: None)
+    return monkeypatch
 
+
+def test_defaults(clean_env):
     cfg = load_config()
-    assert cfg.scene_aware_frames is True
-    assert cfg.vision_sample_keyframes == 24
-    assert cfg.frame_context_max_entries == 16
-    assert cfg.frame_select_budget == 16
-    assert cfg.oss_synth_repo_id == 'Qwen/Qwen2.5-7B-Instruct-GGUF'
-    assert cfg.oss_synth_repo_filename == 'qwen2.5-7b-instruct-q3_k_m.gguf'
-    assert cfg.oss_synth_max_tokens == 2048
-    assert cfg.oss_frame_context_max_entries == 16
-    assert cfg.oss_frame_insight_max_chars == 240
+    assert cfg.gemini_model == 'gemini-2.5-flash'
+    assert (cfg.vision_sample_keyframes, cfg.frame_select_budget) == (24, 16)
     assert cfg.gemini_synth_max_images == 8
+    assert cfg.oss_synth_repo_id == 'Qwen/Qwen2.5-7B-Instruct-GGUF'
+    assert cfg.nova_model_id == 'amazon.nova-pro-v1:0'
     assert cfg.enable_fal is False
     assert cfg.enable_nova is False
-    # Without HF token, whisperx falls back to whisper.
+    # WhisperX diarization needs a Hugging Face token; without one Path 3 uses Whisper.
     assert cfg.oss_asr == 'whisper'
 
 
-def test_whisperx_kept_when_hf_token_present(monkeypatch):
-    monkeypatch.setattr('video_benchmark.config.load_dotenv', lambda env_path=None: None)
-    monkeypatch.setenv('HF_TOKEN', 'hf_test_token')
-    monkeypatch.setenv('OSS_ASR', 'whisperx')
+def test_whisperx_kept_with_hf_token(clean_env):
+    clean_env.setenv('HF_TOKEN', 'hf_test')
+    assert load_config().oss_asr == 'whisperx'
+
+
+def test_fal_key_aliases(clean_env):
+    clean_env.setenv('FAL_API_KEY', 'fal_test')
     cfg = load_config()
-    assert cfg.oss_asr == 'whisperx'
+    assert cfg.enable_fal is True
+    assert os.environ['FAL_KEY'] == 'fal_test'
 
 
-def test_oss_asr_rejects_unknown(monkeypatch):
-    import pytest
-
-    monkeypatch.setattr('video_benchmark.config.load_dotenv', lambda env_path=None: None)
-    monkeypatch.setenv('OSS_ASR', 'foo')
+def test_unknown_values_are_rejected(clean_env):
+    clean_env.setenv('OSS_ASR', 'foo')
     with pytest.raises(ValueError, match='OSS_ASR'):
+        load_config()
+    clean_env.delenv('OSS_ASR')
+    clean_env.setenv('GEMINI_MODEL', 'gemini-9-ultra')
+    with pytest.raises(ValueError, match='no price'):
+        load_config()
+    clean_env.setenv('GEMINI_MODEL', 'gemini-2.5-flash')
+    clean_env.setenv('FRAME_SELECT_BUDGET', '0')
+    with pytest.raises(ValueError, match='at least 1'):
         load_config()
 
 
-def test_config_manifest_includes_vision_reference_duration(monkeypatch):
-    monkeypatch.setattr('video_benchmark.config.load_dotenv', lambda env_path=None: None)
-    monkeypatch.setenv('HF_TOKEN', 'hf_test_token')
+def test_manifest_is_the_whole_config(clean_env):
     cfg = load_config()
     manifest = config_manifest_dict(cfg)
-    assert 'vision_reference_duration_sec' in manifest
-    assert manifest['vision_reference_duration_sec'] == cfg.vision_reference_duration_sec
+    assert manifest['gemini_model'] == cfg.gemini_model
+    assert manifest['benchmark_tune_tag'] is None
+    assert set(manifest) >= {'vision_sample_keyframes', 'frame_select_budget', 'oss_asr'}
+
+
+@pytest.mark.parametrize(('name', 'value'), [
+    ('GEMINI_SYNTH_MAX_IMAGES', '-1'), ('OSS_SYNTH_MAX_TOKENS', '0'),
+    ('OSS_FRAME_CAPTION_MAX_CHARS', '0'), ('SCENE_DETECT_THRESHOLD', 'nan'),
+    ('SCENE_DETECT_THRESHOLD', '-1'), ('WHISPERX_NUM_SPEAKERS', '0'),
+    ('WHISPERX_MIN_SPEAKERS', '0'),
+])
+def test_invalid_numeric_knobs_are_rejected_before_catalog_changes(clean_env, name, value):
+    clean_env.setenv(name, value)
+    with pytest.raises(ValueError, match=name):
+        load_config()
+
+
+def test_nova_supports_profile_credentials_and_rejects_unpriced_models(clean_env):
+    clean_env.setenv('AWS_PROFILE', 'developer-sso')
+    assert load_config().enable_nova
+    clean_env.setenv('NOVA_MODEL_ID', 'amazon.future-model')
+    with pytest.raises(ValueError, match='NOVA_MODEL_ID'):
+        load_config()

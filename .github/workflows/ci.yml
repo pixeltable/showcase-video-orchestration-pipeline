@@ -8,9 +8,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         python-version: ['3.12']
@@ -19,12 +24,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install package (dev + demo)
+      - name: Install package (dev)
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,demo]"
-      - name: Pixeltable version
-        run: python -c "import pixeltable as pxt; assert pxt.__version__ == '0.7.8', pxt.__version__"
+          pip install -e ".[dev]"
+      - name: Pixeltable pin
+        run: python scripts/pixeltable_pin.py --check
       - name: Ruff
         run: ruff check src tests scripts
       - name: Pytest
@@ -32,6 +37,10 @@ jobs:
       - name: CLI help smoke
         run: |
           run-benchmark --help
-          run-videomme-dev --help
+          run-videomme --help
+      - name: Isolated schema apply
+        run: python scripts/schema_apply_smoke.py
+      - name: Local media graph (no credentials or API calls)
+        run: python -m video_benchmark.local_demo
       - name: Render showcase HTML
         run: python scripts/render_showcase.py

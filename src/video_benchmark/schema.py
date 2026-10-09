@@ -1,629 +1,354 @@
-"""Pursuit catalog as path-gated TableModel classes (Pixeltable 0.7+)."""
+"""Pursuit catalog: one TableModel graph, applied with a single `update_all()`.
 
-# TableModel class bodies bind iterator/base columns that ruff cannot see.
+    runs            one row per (video, query) run: native paths 1, 1L, 4, 5, and the audio track
+      keyframes     view: frames sampled evenly from the run's video, captioned (paths 2, 3)
+      audio_chunks  view: the run's audio as one chunk, transcribed (paths 2, 3)
+    syntheses       one row per run for paths 2 and 3; its columns query keyframes and audio_chunks
+
+A syntheses row is inserted after its run row, so its queries see finished views and every
+paid call runs once. Columns exist only for the selected paths, so no unrequested path spends.
+"""
+
+# TableModel class bodies bind iterator and base columns that ruff cannot see.
 # ruff: noqa: F821
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import pixeltable as pxt
+from pixeltable.functions import fal, whisper, whisperx
 from pixeltable.functions.audio import audio_splitter
+from pixeltable.functions.bedrock import converse
 from pixeltable.functions.gemini import generate_content
-from pixeltable.functions.gemini import transcribe as gemini_transcribe
 from pixeltable.functions.video import (
+    clip,
     extract_audio,
     frame_iterator,
     get_duration,
     scene_detect_content,
-    video_splitter,
 )
-from pixeltable.functions.whisper import transcribe as whisper_transcribe
 
-from video_benchmark import queries
-from video_benchmark.config import AUDIO_SPLIT_FULL_DURATION_SEC, BenchmarkConfig
-from video_benchmark.gemini_batch import batched_gemini_frame_context
-from video_benchmark.oss_providers import oss_frame_insight_expr, oss_insight_expr
+from video_benchmark import evidence, oss, pricing, prompts, provenance, providers
+from video_benchmark.config import (
+    AUDIO_SPLIT_FULL_DURATION_SEC,
+    BenchmarkConfig,
+    config_manifest_dict,
+)
 from video_benchmark.paths import DEFAULT_PATHS
-from video_benchmark.udfs import (
-    FAL_MAX_DURATION_SEC_DEFAULT,
-    FAL_VIDEO_UNDERSTANDING_APP,
-    GEMINI_25_FLASH_INPUT_PER_M,
-    asr_cost_from_transcripts,
-    assemble_benchmark_context,
-    compact_frame_context,
-    cost_delta,
-    dedupe_frame_context,
-    estimate_image_tokens,
-    estimate_nova_video_tokens,
-    estimate_text_tokens,
-    estimate_video_tokens,
-    extract_whisper_segments,
-    extract_whisperx_segments,
-    fal_run_safe,
-    fal_text,
-    fal_video_cost,
-    fal_video_understanding_input,
-    frame_prompt,
-    gemini_multimodal_synthesis_contents,
-    gemini_orchestrated_cost,
-    gemini_output_tokens,
-    gemini_prompt_tokens,
-    gemini_synthesis_prompt,
-    gemini_text,
-    gemini_transcribe_prompt,
-    merge_transcript_segment_lists,
-    native_prompt,
-    nova_invoke_safe,
-    nova_output_tokens,
-    nova_prompt_tokens,
-    nova_text,
-    oss_synthesis_prompt,
-    parse_diarized_transcript,
-    resolve_fal_video_url,
-    resolved_gemini_cost,
-    scene_cut_segment_times,
-    select_scene_frames,
-    summarize_frame_context,
-    vision_cost_from_frames,
-    vision_rollup_from_frames,
-    zero_cost,
-)
-from video_benchmark.udfs import (
-    nova_cost as nova_cost_expr,
-)
 
 CATALOG_DIR = 'video_benchmarking'
-OSS_VISION_LABEL = 'OSS-VLM'
+FAL_APP = 'fal-ai/video-understanding'
+# fal-ai/video-understanding rejects clips longer than about 122 s.
+FAL_MAX_DURATION_SEC = 120.0
 
 
 @dataclass(frozen=True)
 class PathPlan:
     active: frozenset[str]
-    want_1: bool
-    want_2: bool
-    want_3: bool
-    want_4: bool
-    want_5: bool
-    need_modular: bool
-    need_gemini_asr: bool
-    need_oss_asr: bool
-    use_batched_vision: bool
-    use_frame_budget: bool
+    native: bool
+    native_low: bool
+    orchestrated: bool
+    oss: bool
+    fal: bool
+    nova: bool
+    oss_asr: str
+
+    @property
+    def modular(self) -> bool:
+        return self.orchestrated or self.oss
+
+    @property
+    def gemini_asr(self) -> bool:
+        return self.orchestrated or (self.oss and self.oss_asr == 'gemini')
+
+    def enabled(self) -> list[str]:
+        """Paths that will run, in label order (4 and 5 also need credentials)."""
+        flags = {
+            '1': self.native,
+            '1L': self.native_low,
+            '2': self.orchestrated,
+            '3': self.oss,
+            '4': self.fal,
+            '5': self.nova,
+        }
+        return [path for path, on in flags.items() if on]
 
 
 def plan_paths(config: BenchmarkConfig, paths: set[str] | None) -> PathPlan:
     active = frozenset(paths if paths is not None else DEFAULT_PATHS)
-    want_3 = '3' in active
     return PathPlan(
         active=active,
-        want_1='1' in active,
-        want_2='2' in active,
-        want_3=want_3,
-        want_4='4' in active and config.enable_fal,
-        want_5='5' in active and config.enable_nova,
-        need_modular=('2' in active) or want_3,
-        need_gemini_asr=('2' in active) or (want_3 and config.oss_asr == 'gemini'),
-        need_oss_asr=want_3 and config.oss_asr in ('whisper', 'whisperx'),
-        use_batched_vision=config.gemini_vision_mode == 'batched',
-        use_frame_budget=(
-            (config.scene_aware_frames and config.vision_sample_keyframes > 0)
-            or (config.max_vision_keyframes > 0 and not config.scene_aware_frames)
-        ),
+        native='1' in active,
+        native_low='1L' in active,
+        orchestrated='2' in active,
+        oss='3' in active,
+        fal='4' in active and config.enable_fal,
+        nova='5' in active and config.enable_nova,
+        oss_asr=config.oss_asr,
     )
-
-
-def _audio_splitter(audio, config: BenchmarkConfig):
-    mode = config.audio_split_mode
-    if mode == 'max_size':
-        return audio_splitter(audio=audio, max_size=config.audio_chunk_max_bytes)
-    if mode == 'duration':
-        return audio_splitter(audio=audio, duration=config.audio_chunk_duration_sec)
-    return audio_splitter(audio=audio, duration=AUDIO_SPLIT_FULL_DURATION_SEC)
-
-
-def _frame_iterator(video_column, config: BenchmarkConfig, *, keyframes_only: bool):
-    if keyframes_only:
-        return frame_iterator(video_column, keyframes_only=True)
-    sample_count = (
-        config.vision_sample_keyframes if config.scene_aware_frames else config.max_vision_keyframes
-    )
-    if sample_count > 0:
-        return frame_iterator(video_column, num_frames=sample_count)
-    fps = 1.0 / max(config.vision_reference_duration_sec, 1.0)
-    return frame_iterator(video_column, fps=fps)
-
-
-def model_column_names(table_model_base: type, table_name: str) -> set[str]:
-    models = table_model_base.__registered_models__
-    if table_name not in models:
-        return set()
-    return set(models[table_name].__columns__)
 
 
 class CatalogSchemaMismatch(RuntimeError):
-    """Live catalog is missing columns required by the requested --paths."""
+    """The live catalog was built for different paths or settings."""
 
 
-def required_parent_columns(plan: PathPlan) -> list[str]:
-    cols: list[str] = []
-    if plan.want_1:
-        cols.append('native_insight')
-    if plan.want_2:
-        cols.append('gemini_orchestrated_insight')
-    if plan.want_3:
-        cols.append('oss_insight')
-    if plan.want_4:
-        cols.append('fal_insight')
-    if plan.want_5:
-        cols.append('nova_insight')
-    return cols
-
-
-_PATH_INSIGHT_COLUMNS = (
-    ('native_insight', 'want_1'),
-    ('gemini_orchestrated_insight', 'want_2'),
-    ('oss_insight', 'want_3'),
-    ('fal_insight', 'want_4'),
-    ('nova_insight', 'want_5'),
-)
-
-
-def _ensure_catalog_matches_plan(plan: PathPlan) -> None:
-    existing = pxt.get_table(f'{CATALOG_DIR}.video_sources', if_not_exists='ignore')
-    if existing is None:
-        return
-    existing_cols = set(existing.columns())
-    missing = [c for c in required_parent_columns(plan) if c not in existing_cols]
-    extra = [
-        name
-        for name, flag in _PATH_INSIGHT_COLUMNS
-        if name in existing_cols and not getattr(plan, flag)
-    ]
-    keyframes = pxt.get_table(f'{CATALOG_DIR}.keyframes', if_not_exists='ignore')
-    if plan.need_modular and keyframes is None:
-        missing.append('keyframes')
-    elif plan.want_3 and keyframes is not None and 'oss_frame_insight' not in set(
-        keyframes.columns()
-    ):
-        missing.append('keyframes.oss_frame_insight')
-    if missing or extra:
-        parts = []
-        if missing:
-            parts.append(f'missing {missing}')
-        if extra:
-            parts.append(f'has extra path columns {extra}')
-        raise CatalogSchemaMismatch(
-            f'Catalog {CATALOG_DIR} {" and ".join(parts)} for paths '
-            f'{",".join(sorted(plan.active))}. Rerun with --reset.'
-        )
-
-
-def build_core_models(config: BenchmarkConfig, plan: PathPlan) -> type:
-    """VideoSources + views (no parent rollups that depend on @pxt.query)."""
+def build_models(config: BenchmarkConfig, plan: PathPlan) -> type:
     TableModel = pxt.model_base()
-    threshold = config.scene_detect_threshold
-    min_seg = config.min_segment_duration
-    fallback = config.segment_fallback_window_sec
-    gemini_model = config.gemini_model
+    model = config.gemini_model
+    definition = provenance.pipeline_identity(
+        config_manifest_dict(config), plan.enabled(), pxt.__version__
+    )
 
-    class VideoSources(TableModel, name='video_sources'):
+    class Runs(TableModel, name='runs'):
+        run_id = pxt.Column(type=pxt.String, primary_key=True)
         video: pxt.Video
         query: pxt.String
-        video_duration_sec = get_duration(video)
-        if plan.need_modular:
-            scene_cuts = scene_detect_content(video, threshold=threshold)
-            segment_times = scene_cut_segment_times(
-                scene_cuts, video_duration_sec, min_seg, fallback
+        definition_id = definition
+        duration_sec = get_duration(video)
+        if plan.native:
+            native_response = generate_content([video, prompts.native_prompt(query)], model=model)
+            native_answer = providers.gemini_text(native_response)
+            native_usage = pricing.gemini_usage(native_response)
+            native_cost = pricing.gemini_cost(native_usage, model)
+        if plan.native_low:
+            native_low_response = generate_content(
+                [video, prompts.native_prompt(query)],
+                model=model,
+                config=providers.LOW_MEDIA_RESOLUTION,
             )
-        if plan.want_1:
-            native_response = generate_content(
-                model=gemini_model,
-                contents=[video, native_prompt(query)],
+            native_low_answer = providers.gemini_text(native_low_response)
+            native_low_usage = pricing.gemini_usage(native_low_response)
+            native_low_cost = pricing.gemini_cost(native_low_usage, model)
+        if plan.fal:
+            fal_clip = clip(video, start_time=0.0, duration=FAL_MAX_DURATION_SEC)
+            fal_response = fal.run(
+                {
+                    'video_url': providers.fal_upload(fal_clip),
+                    'prompt': prompts.native_prompt(query),
+                },
+                app=FAL_APP,
             )
-            native_insight = gemini_text(native_response)
-            native_input_tokens = estimate_video_tokens(video_duration_sec, query)
-            native_output_tokens = estimate_text_tokens(native_insight)
-            native_actual_input_tokens = gemini_prompt_tokens(native_response)
-            native_actual_output_tokens = gemini_output_tokens(native_response)
-            native_cost = resolved_gemini_cost(
-                native_actual_input_tokens,
-                native_actual_output_tokens,
-                native_input_tokens,
-                native_output_tokens,
-                GEMINI_25_FLASH_INPUT_PER_M,
+            fal_answer = fal_response.output.astype(pxt.String)
+            fal_cost = pricing.fal_cost(duration_sec, FAL_MAX_DURATION_SEC)
+        if plan.nova:
+            nova_video = providers.nova_inline_video(video)
+            nova_response = converse(
+                providers.nova_video_messages(nova_video, prompts.native_prompt(query)),
+                model_id=config.nova_model_id,
             )
-        if plan.need_modular:
+            nova_answer = providers.nova_text(nova_response)
+            nova_usage = pricing.nova_usage(nova_response)
+            nova_cost = pricing.nova_cost(nova_usage, config.nova_model_id)
+        if plan.modular:
             audio = extract_audio(video, format='mp3')
-        if plan.want_4:
-            fal_video_url = resolve_fal_video_url(
-                video, config.fal_video_url, FAL_MAX_DURATION_SEC_DEFAULT
-            )
-            fal_request = fal_video_understanding_input(
-                fal_video_url,
-                native_prompt(query),
-                config.fal_detailed_analysis,
-            )
-            fal_response = fal_run_safe(fal_request, FAL_VIDEO_UNDERSTANDING_APP)
-            fal_insight = fal_text(fal_response)
-            fal_cost = fal_video_cost(video_duration_sec, FAL_MAX_DURATION_SEC_DEFAULT)
-            if plan.want_1:
-                cost_delta_native_vs_fal = cost_delta(native_cost, fal_cost)
-        if plan.want_5:
-            nova_response = nova_invoke_safe(
-                video,
-                native_prompt(query),
-                config.nova_model_id,
-                config.nova_video_s3_uri,
-            )
-            nova_insight = nova_text(nova_response)
-            nova_input_tokens = estimate_nova_video_tokens(video_duration_sec, query)
-            nova_output_tokens_est = estimate_text_tokens(nova_insight)
-            nova_actual_input_tokens = nova_prompt_tokens(nova_response)
-            nova_actual_output_tokens = nova_output_tokens(nova_response)
-            nova_cost = nova_cost_expr(
-                nova_actual_input_tokens,
-                nova_actual_output_tokens,
-                nova_input_tokens,
-                nova_output_tokens_est,
-                config.nova_model_id,
-                config.nova_input_usd_per_1m,
-                config.nova_output_usd_per_1m,
-            )
-            if plan.want_1:
-                cost_delta_native_vs_nova = cost_delta(native_cost, nova_cost)
 
-    if not plan.need_modular:
+    if not plan.modular:
         return TableModel
-
-    whisperx_transcribe = None
-    if plan.need_oss_asr and config.oss_asr == 'whisperx':
-        from pixeltable.functions.whisperx import transcribe as whisperx_transcribe
 
     class AudioChunks(
         TableModel,
         name='audio_chunks',
-        base=VideoSources,
-        iterator=_audio_splitter(VideoSources.audio, config),
+        base=Runs,
+        iterator=audio_splitter(Runs.audio, duration=AUDIO_SPLIT_FULL_DURATION_SEC),
     ):
-        if plan.need_gemini_asr:
-            gemini_chunk_transcript = gemini_transcribe(
-                audio=audio_segment,
-                model=gemini_model,
-                prompt=gemini_transcribe_prompt(),
+        if plan.gemini_asr:
+            gemini_asr_response = providers.transcribe_response(
+                audio_segment,
+                model=model,
+                prompt=prompts.TRANSCRIBE_PROMPT,
+                config=providers.NO_THINKING,
             )
-            gemini_transcript_lines = parse_diarized_transcript(
-                gemini_chunk_transcript, segment_start
+            gemini_transcript = evidence.parse_diarized_transcript(
+                providers.gemini_text(gemini_asr_response), segment_start
             )
-        if plan.need_oss_asr and config.oss_asr == 'whisper':
-            whisper_asr_raw = whisper_transcribe(audio=audio_segment, model=config.whisper_model)
-            whisper_segment_lines = extract_whisper_segments(whisper_asr_raw, segment_start)
-        if plan.need_oss_asr and config.oss_asr == 'whisperx':
-            if config.whisperx_num_speakers is not None:
-                whisperx_diarized = whisperx_transcribe(
-                    audio=audio_segment,
-                    model=config.whisperx_model,
-                    diarize=True,
-                    diarization_model_name=config.whisperx_diarization_model,
-                    min_speakers=config.whisperx_min_speakers,
-                    num_speakers=config.whisperx_num_speakers,
-                )
-            else:
-                whisperx_diarized = whisperx_transcribe(
-                    audio=audio_segment,
-                    model=config.whisperx_model,
-                    diarize=True,
-                    diarization_model_name=config.whisperx_diarization_model,
-                    min_speakers=config.whisperx_min_speakers,
-                )
-            whisperx_segment_lines = extract_whisperx_segments(whisperx_diarized, segment_start)
+            gemini_asr_usage = pricing.gemini_usage(gemini_asr_response)
+            gemini_asr_cost = pricing.gemini_cost(gemini_asr_usage, model)
+        if plan.oss and plan.oss_asr == 'whisper':
+            whisper_result = whisper.transcribe(audio_segment, model=config.whisper_model)
+            whisper_transcript = evidence.asr_segment_lines(whisper_result, segment_start)
+        if plan.oss and plan.oss_asr == 'whisperx':
+            whisperx_result = whisperx.transcribe(
+                audio_segment,
+                model=config.whisperx_model,
+                diarize=True,
+                diarization_model_name=config.whisperx_diarization_model,
+                min_speakers=config.whisperx_min_speakers,
+                num_speakers=config.whisperx_num_speakers,
+            )
+            whisperx_transcript = evidence.asr_segment_lines(whisperx_result, segment_start)
 
-    if plan.use_frame_budget:
-        _define_keyframes(
-            TableModel,
-            base=VideoSources,
-            iterator=_frame_iterator(VideoSources.video, config, keyframes_only=False),
-            plan=plan,
-            config=config,
-            gemini_model=gemini_model,
-            budgeted=True,
-        )
-    else:
-        class Segments(
-            TableModel,
-            name='segments',
-            base=VideoSources,
-            iterator=video_splitter(
-                VideoSources.video,
-                segment_times=VideoSources.segment_times,
-                mode='accurate',
-                min_segment_duration=min_seg,
-            ),
-        ):
-            pass
-
-        _define_keyframes(
-            TableModel,
-            base=Segments,
-            iterator=_frame_iterator(Segments.video_segment, config, keyframes_only=True),
-            plan=plan,
-            config=config,
-            gemini_model=gemini_model,
-            budgeted=False,
-        )
-
-    return TableModel
-
-
-def _define_keyframes(
-    TableModel,
-    *,
-    base,
-    iterator,
-    plan: PathPlan,
-    config: BenchmarkConfig,
-    gemini_model: str,
-    budgeted: bool,
-) -> None:
     class Keyframes(
         TableModel,
         name='keyframes',
-        base=base,
-        iterator=iterator,
+        base=Runs,
+        iterator=frame_iterator(Runs.video, num_frames=config.vision_sample_keyframes),
     ):
-        frame_position_sec = frame_attrs['time'].astype(pxt.Float)
-        if budgeted:
-            segment_start = 0.0
-            global_position_sec = frame_position_sec.astype(pxt.Float)
-        else:
-            global_position_sec = (segment_start + frame_position_sec).astype(pxt.Float)
-        global_position_ms = (global_position_sec * 1000.0).astype(pxt.Float)
-        if plan.want_2 and not plan.use_batched_vision:
-            gemini_frame_response = generate_content(
-                model=gemini_model,
-                contents=[frame, frame_prompt(query, global_position_sec)],
+        position_sec = frame_attrs['time'].astype(pxt.Float)
+        if plan.orchestrated:
+            gemini_caption_response = generate_content(
+                [frame, prompts.frame_prompt(query, position_sec)],
+                model=model,
+                config=providers.NO_THINKING,
             )
-            gemini_frame_insight = gemini_text(gemini_frame_response)
-            gemini_frame_input_tokens = estimate_image_tokens(query)
-            gemini_frame_output_tokens = estimate_text_tokens(gemini_frame_insight)
-            gemini_frame_actual_input_tokens = gemini_prompt_tokens(gemini_frame_response)
-            gemini_frame_actual_output_tokens = gemini_output_tokens(gemini_frame_response)
-            gemini_frame_cost = resolved_gemini_cost(
-                gemini_frame_actual_input_tokens,
-                gemini_frame_actual_output_tokens,
-                gemini_frame_input_tokens,
-                gemini_frame_output_tokens,
-                GEMINI_25_FLASH_INPUT_PER_M,
-            )
-        if plan.want_3:
-            oss_frame_insight = oss_frame_insight_expr(
+            gemini_caption = providers.gemini_text(gemini_caption_response)
+            gemini_caption_usage = pricing.gemini_usage(gemini_caption_response)
+            gemini_caption_cost = pricing.gemini_cost(gemini_caption_usage, model)
+        if plan.oss:
+            oss_caption = oss.local_caption(
                 frame,
-                query,
-                global_position_sec,
-                backend=config.oss_backend,
-                vision_model=config.oss_vision_model,
-                vision_repo_id=config.oss_vision_repo_id,
-                vision_repo_filename=config.oss_vision_repo_filename,
-                mmproj_repo_filename=config.oss_vision_mmproj_repo_filename,
-                vision_chat_format=config.oss_vision_chat_format,
-                ollama_host=config.ollama_host,
+                prompts.frame_prompt(query, position_sec),
+                repo_id=config.oss_vision_repo_id,
+                filename=config.oss_vision_repo_filename,
+                mmproj_filename=config.oss_vision_mmproj_repo_filename,
+                chat_format=config.oss_vision_chat_format,
             )
 
+    if plan.gemini_asr:
 
-def build_rollup_models(config: BenchmarkConfig, plan: PathPlan) -> type:
-    """Additive VideoSources columns that depend on registered @pxt.query helpers."""
-    TableModel = pxt.model_base()
-    threshold = config.scene_detect_threshold
-    min_seg = config.min_segment_duration
-    fallback = config.segment_fallback_window_sec
-    gemini_model = config.gemini_model
+        @pxt.query
+        def gemini_asr_rows(run_id: str):
+            return (
+                AudioChunks.where(AudioChunks.run_id == run_id)
+                .order_by(AudioChunks.segment_start)
+                .select(lines=AudioChunks.gemini_transcript, cost=AudioChunks.gemini_asr_cost)
+            )
 
-    class VideoSources(TableModel, name='video_sources'):
+    if plan.oss and plan.oss_asr != 'gemini':
+
+        @pxt.query
+        def local_asr_rows(run_id: str):
+            return (
+                AudioChunks.where(AudioChunks.run_id == run_id)
+                .order_by(AudioChunks.segment_start)
+                .select(lines=getattr(AudioChunks, f'{plan.oss_asr}_transcript'))
+            )
+
+    @pxt.query
+    def frame_images(run_id: str):
+        return (
+            Keyframes.where(Keyframes.run_id == run_id)
+            .order_by(Keyframes.position_sec)
+            .select(position_sec=Keyframes.position_sec, frame=Keyframes.frame)
+        )
+
+    if plan.orchestrated:
+        # A frame whose caption call failed carries no evidence (and was not billed).
+        @pxt.query
+        def gemini_frame_rows(run_id: str):
+            return (
+                Keyframes.where((Keyframes.run_id == run_id) & (Keyframes.gemini_caption != None))  # noqa: E711
+                .order_by(Keyframes.position_sec)
+                .select(
+                    position_sec=Keyframes.position_sec,
+                    caption=Keyframes.gemini_caption,
+                    cost=Keyframes.gemini_caption_cost,
+                )
+            )
+
+    if plan.oss:
+
+        @pxt.query
+        def oss_frame_rows(run_id: str):
+            return (
+                Keyframes.where((Keyframes.run_id == run_id) & (Keyframes.oss_caption != None))  # noqa: E711
+                .order_by(Keyframes.position_sec)
+                .select(position_sec=Keyframes.position_sec, caption=Keyframes.oss_caption)
+            )
+
+    class Syntheses(TableModel, name='syntheses'):
+        run_id = pxt.Column(type=pxt.String, primary_key=True)
         video: pxt.Video
         query: pxt.String
-        video_duration_sec = get_duration(video)
-        if plan.need_modular:
-            scene_cuts = scene_detect_content(video, threshold=threshold)
-            segment_times = scene_cut_segment_times(
-                scene_cuts, video_duration_sec, min_seg, fallback
+        duration_sec = get_duration(video)
+        scene_cuts = scene_detect_content(video, threshold=config.scene_detect_threshold)
+        if plan.orchestrated:
+            gemini_frames = gemini_frame_rows(run_id)
+            gemini_asr = gemini_asr_rows(run_id)
+            gemini_transcript = evidence.merge_transcript_rows(gemini_asr)
+            gemini_selected = evidence.select_frames(
+                gemini_frames, scene_cuts, config.frame_select_budget
             )
-        if plan.want_1:
-            native_response = generate_content(
-                model=gemini_model,
-                contents=[video, native_prompt(query)],
+            gemini_attached = evidence.attached_frames(
+                gemini_selected, config.gemini_synth_max_images
             )
-            native_insight = gemini_text(native_response)
-            native_input_tokens = estimate_video_tokens(video_duration_sec, query)
-            native_output_tokens = estimate_text_tokens(native_insight)
-            native_actual_input_tokens = gemini_prompt_tokens(native_response)
-            native_actual_output_tokens = gemini_output_tokens(native_response)
-            native_cost = resolved_gemini_cost(
-                native_actual_input_tokens,
-                native_actual_output_tokens,
-                native_input_tokens,
-                native_output_tokens,
-                GEMINI_25_FLASH_INPUT_PER_M,
-            )
-        if plan.need_modular:
-            audio = extract_audio(video, format='mp3')
-        if plan.want_4:
-            fal_video_url = resolve_fal_video_url(
-                video, config.fal_video_url, FAL_MAX_DURATION_SEC_DEFAULT
-            )
-            fal_request = fal_video_understanding_input(
-                fal_video_url,
-                native_prompt(query),
-                config.fal_detailed_analysis,
-            )
-            fal_response = fal_run_safe(fal_request, FAL_VIDEO_UNDERSTANDING_APP)
-            fal_insight = fal_text(fal_response)
-            fal_cost = fal_video_cost(video_duration_sec, FAL_MAX_DURATION_SEC_DEFAULT)
-            if plan.want_1:
-                cost_delta_native_vs_fal = cost_delta(native_cost, fal_cost)
-        if plan.want_5:
-            nova_response = nova_invoke_safe(
-                video,
-                native_prompt(query),
-                config.nova_model_id,
-                config.nova_video_s3_uri,
-            )
-            nova_insight = nova_text(nova_response)
-            nova_input_tokens = estimate_nova_video_tokens(video_duration_sec, query)
-            nova_output_tokens_est = estimate_text_tokens(nova_insight)
-            nova_actual_input_tokens = nova_prompt_tokens(nova_response)
-            nova_actual_output_tokens = nova_output_tokens(nova_response)
-            nova_cost = nova_cost_expr(
-                nova_actual_input_tokens,
-                nova_actual_output_tokens,
-                nova_input_tokens,
-                nova_output_tokens_est,
-                config.nova_model_id,
-                config.nova_input_usd_per_1m,
-                config.nova_output_usd_per_1m,
-            )
-            if plan.want_1:
-                cost_delta_native_vs_nova = cost_delta(native_cost, nova_cost)
-        if plan.want_2:
-            if plan.use_batched_vision:
-                gemini_frame_context = batched_gemini_frame_context(
-                    query,
-                    queries.gemini_frame_batch_inputs(query),
-                    gemini_model,
-                    config.gemini_vision_batch_size,
-                )
-            else:
-                gemini_frame_context = queries.gemini_frame_insights(query)
-            gemini_transcript_context = merge_transcript_segment_lists(
-                queries.gemini_audio_transcripts(query)
-            )
-            gemini_frame_context_deduped = dedupe_frame_context(gemini_frame_context)
-            if config.scene_aware_frames:
-                gemini_frame_context_selected = select_scene_frames(
-                    gemini_frame_context_deduped,
-                    scene_cuts,
-                    config.frame_select_budget,
-                )
-                gemini_frame_context_summarized = summarize_frame_context(
-                    gemini_frame_context_selected, config.frame_context_max_entries
-                )
-            else:
-                gemini_frame_context_summarized = summarize_frame_context(
-                    gemini_frame_context_deduped, config.frame_context_max_entries
-                )
-            gemini_orchestrated_context = assemble_benchmark_context(
+            gemini_prompt = prompts.synthesis_prompt(
                 query,
-                gemini_transcript_context,
-                gemini_frame_context_summarized,
-                'Gemini',
+                evidence.evidence_text(gemini_transcript, gemini_selected, 'Gemini'),
+                duration_sec,
+                gemini_attached,
             )
-            gemini_synthesis_prompt_text = gemini_synthesis_prompt(
-                gemini_orchestrated_context, video_duration_sec
+            gemini_contents = evidence.synthesis_contents(
+                gemini_prompt, gemini_attached, frame_images(run_id)
             )
-            gemini_synthesis_contents = gemini_multimodal_synthesis_contents(
-                gemini_synthesis_prompt_text,
-                gemini_frame_context_summarized,
-                queries.gemini_frame_images(query),
-                config.gemini_synth_max_images,
+            gemini_response = generate_content(gemini_contents, model=model)
+            gemini_answer = providers.gemini_text(gemini_response)
+            gemini_synthesis_usage = pricing.gemini_usage(gemini_response)
+            gemini_synthesis_cost = pricing.gemini_cost(gemini_synthesis_usage, model)
+            gemini_caption_cost = pricing.sum_costs(gemini_frames)
+            gemini_asr_cost = pricing.sum_costs(gemini_asr)
+            gemini_total_cost = gemini_caption_cost + gemini_asr_cost + gemini_synthesis_cost
+        if plan.oss:
+            oss_frames = oss_frame_rows(run_id)
+            oss_asr = (
+                gemini_asr_rows(run_id) if plan.oss_asr == 'gemini' else local_asr_rows(run_id)
             )
-            gemini_orchestrated_response = generate_content(
-                model=gemini_model,
-                contents=gemini_synthesis_contents,
+            oss_transcript = evidence.merge_transcript_rows(oss_asr)
+            oss_selected = evidence.compact_frames(
+                evidence.select_frames(oss_frames, scene_cuts, config.frame_select_budget),
+                config.oss_frame_caption_max_chars,
             )
-            gemini_orchestrated_insight = gemini_text(gemini_orchestrated_response)
-            gemini_synthesis_input_tokens = estimate_text_tokens(gemini_orchestrated_context)
-            gemini_synthesis_output_tokens = estimate_text_tokens(gemini_orchestrated_insight)
-            gemini_synthesis_actual_input_tokens = gemini_prompt_tokens(
-                gemini_orchestrated_response
-            )
-            gemini_synthesis_actual_output_tokens = gemini_output_tokens(
-                gemini_orchestrated_response
-            )
-            gemini_synthesis_cost = resolved_gemini_cost(
-                gemini_synthesis_actual_input_tokens,
-                gemini_synthesis_actual_output_tokens,
-                gemini_synthesis_input_tokens,
-                gemini_synthesis_output_tokens,
-                GEMINI_25_FLASH_INPUT_PER_M,
-            )
-            gemini_vision_rollup = vision_rollup_from_frames(gemini_frame_context, 'Gemini')
-            gemini_vision_track_cost = vision_cost_from_frames(gemini_frame_context)
-            gemini_asr_cost = asr_cost_from_transcripts(
-                gemini_transcript_context, video_duration_sec
-            )
-            gemini_orchestrated_total = gemini_orchestrated_cost(
-                gemini_vision_track_cost, gemini_asr_cost, gemini_synthesis_cost
-            )
-            if plan.want_1:
-                cost_delta_native_vs_gemini = cost_delta(native_cost, gemini_orchestrated_total)
-        if plan.want_3:
-            oss_frame_context = queries.oss_frame_insights(query)
-            oss_transcript_context = merge_transcript_segment_lists(
-                queries.oss_audio_transcripts(query)
-            )
-            oss_frame_context_deduped = dedupe_frame_context(oss_frame_context)
-            if config.scene_aware_frames:
-                oss_frame_context_selected = select_scene_frames(
-                    oss_frame_context_deduped,
-                    scene_cuts,
-                    config.frame_select_budget,
-                )
-                oss_frame_context_summarized = summarize_frame_context(
-                    oss_frame_context_selected, config.oss_frame_context_max_entries
-                )
-            else:
-                oss_frame_context_summarized = summarize_frame_context(
-                    oss_frame_context_deduped, config.oss_frame_context_max_entries
-                )
-            oss_frame_context_compact = compact_frame_context(
-                oss_frame_context_summarized, config.oss_frame_insight_max_chars
-            )
-            oss_context = assemble_benchmark_context(
+            oss_prompt = prompts.synthesis_prompt(
                 query,
-                oss_transcript_context,
-                oss_frame_context_compact,
-                OSS_VISION_LABEL,
+                evidence.evidence_text(oss_transcript, oss_selected, 'OSS-VLM'),
+                duration_sec,
+                [],
             )
-            oss_synthesis_prompt_text = oss_synthesis_prompt(oss_context, video_duration_sec)
-            oss_insight = oss_insight_expr(
-                oss_synthesis_prompt_text,
-                backend=config.oss_backend,
-                vision_model=config.oss_vision_model,
-                synth_repo_id=config.oss_synth_repo_id,
-                synth_repo_filename=config.oss_synth_repo_filename,
-                synth_max_tokens=config.oss_synth_max_tokens,
-                ollama_host=config.ollama_host,
+            oss_answer = oss.local_synthesize(
+                oss_prompt,
+                repo_id=config.oss_synth_repo_id,
+                filename=config.oss_synth_repo_filename,
+                max_tokens=config.oss_synth_max_tokens,
             )
-            oss_cost = zero_cost()
+            # Local models cost no API spend; Gemini ASR, when chosen for fairness, does.
+            if plan.oss_asr == 'gemini':
+                oss_cost = pricing.sum_costs(oss_asr)
+            else:
+                oss_cost = 0.0
 
     return TableModel
 
 
-def apply_pursuit_schema(config: BenchmarkConfig, paths: set[str] | None = None) -> PathPlan:
-    """Create or reconcile the Pursuit catalog, then register scoped queries."""
-    plan = plan_paths(config, paths)
-    pxt.create_dir(CATALOG_DIR, if_exists='ignore')
-    _ensure_catalog_matches_plan(plan)
-    existing = pxt.get_table(f'{CATALOG_DIR}.video_sources', if_not_exists='ignore')
-    existing_cols = set(existing.columns()) if existing is not None else set()
-    # Core models omit query-backed rollups. Re-applying them after rollups exist
-    # would look like a destructive drop; skip in that case.
-    if not existing_cols.intersection({'gemini_orchestrated_insight', 'oss_insight'}):
-        build_core_models(config, plan).update_all(CATALOG_DIR)
-    if plan.need_modular:
-        keyframes = pxt.get_table(f'{CATALOG_DIR}.keyframes', if_not_exists='ignore')
-        audio_chunks = pxt.get_table(f'{CATALOG_DIR}.audio_chunks', if_not_exists='ignore')
-        if keyframes is None or audio_chunks is None:
-            raise CatalogSchemaMismatch(
-                f'Catalog {CATALOG_DIR} is missing keyframes/audio_chunks. Rerun with --reset.'
-            )
-        queries.register(
-            keyframes,
-            audio_chunks,
-            oss_asr=config.oss_asr,
-            include_gemini=plan.want_2,
-            include_oss=plan.want_3,
-            batched_vision=plan.use_batched_vision,
+def apply_models(models: type, catalog_dir: str) -> None:
+    """Create the catalog from `models`, or confirm the live one already matches them.
+
+    Any difference (other paths, other settings, edited prompts) raises instead of migrating:
+    one catalog never mixes rows computed under two definitions.
+    """
+    pxt.create_dir(catalog_dir, if_exists='ignore')
+    declared = set(models.__registered_models__)
+    existing = {re.split(r'[./]', path)[-1] for path in pxt.list_tables(catalog_dir)}
+    problems = [
+        f'table {name!r} is not part of these paths' for name in sorted(existing - declared)
+    ]
+    for name, diff in models.get_model_diff(catalog_dir).items():
+        if diff.resolution not in ('create', 'up_to_date'):
+            problems.extend(f'{name}: {op.description}' for op in diff.ops)
+    if problems:
+        detail = '\n  '.join(problems)
+        raise CatalogSchemaMismatch(
+            f'Catalog {catalog_dir!r} was built for different paths or settings:\n  {detail}\n'
+            f'Rerun with --reset (drops {catalog_dir!r}) to rebuild it.'
         )
-        rollup = build_rollup_models(config, plan)
-        rollup.update_all(CATALOG_DIR)
+    models.update_all(catalog_dir)
+
+
+def apply_schema(config: BenchmarkConfig, paths: set[str] | None = None) -> PathPlan:
+    plan = plan_paths(config, paths)
+    apply_models(build_models(config, plan), CATALOG_DIR)
     return plan
+
+
+def reset_catalog() -> None:
+    pxt.drop_dir(CATALOG_DIR, force=True, if_not_exists='ignore')

@@ -1,3 +1,3 @@
-"""Video understanding benchmark: native vs modular pipelines."""
+"""Native vs orchestrated video understanding on a Pixeltable catalog."""
 
-__version__ = '0.1.0'
+__version__ = '0.2.0'

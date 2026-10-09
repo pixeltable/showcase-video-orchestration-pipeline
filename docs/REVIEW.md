@@ -1,0 +1,55 @@
+# Showcase review - 2026-10-08
+
+This review covers the current local work in `pixeltable/showcase-video-orchestration-pipeline`, including the in-progress TableModel rewrite. Pre-existing changes and recorded experiment exports were preserved. The SDK pin and local environment were upgraded from **0.7.11 to 0.7.15**, the latest stable release reported by the live [PyPI JSON endpoint](https://pypi.org/pypi/pixeltable/json) on the review date. No provider model calls, user-catalog migrations, commits, or pushes were performed.
+
+The application is a useful SDK showcase: typed media, iterator views, computed provider calls, materialized query-backed evidence, and inspectable intermediate results. The developer entry point now demonstrates that graph with a real generated clip and no credentials. The research comparison remains exploratory evidence about a specific model and sample. Its artifacts are recordings from 0.7.11, not a new benchmark on 0.7.15.
+
+## Correctness findings and changes
+
+| Priority | Finding | Resolution and evidence |
+|----------|---------|-------------------------|
+| P1 | Cached Gemini tokens without a modality breakdown were subtracted from a nonexistent text bucket. A 1,000-video-token call with 500 cached tokens priced at $0.000315 instead of $0.000165. | `pricing.py` allocates the aggregate cache only when all input modalities share the same price pair. Ambiguous mixed audio/video allocation is an accounting error. A regression checks the exact amounts. The independent review found no affected records in committed exports, so historical costs were not rewritten. |
+| P1 | Missing token usage made a successful paid call look free. A valid answer could export cost zero even when usage or cost computation failed. | Missing usage raises a visible accounting error. Pursuit and Video-MME preserve valid answers, report nullable totals, distinguish unknown-cost counts from provider failures, and expose known partial subtotals explicitly. Integration tests cover native calls, captions, transcription, and ambiguous cache allocation. |
+| P1 | Question-level Wilson intervals and McNemar tests assumed independence although three questions share each video. Missing outcomes also could use a different bootstrap denominator. | Accuracy and difference intervals now resample whole videos, and paired tests exchange whole-video path labels with exact integer enumeration. Missing answers count as wrong in every denominator. Wilson/McNemar remain labeled diagnostics; comparisons are exploratory and unadjusted. Figures and paper were reanalysed from fixed predictions, with original exports retained. |
+| P1 | Expression-only schema comparison could miss edited UDF bodies or prompts while claiming frozen experimental definitions. | The graph stores a definition digest covering computation source, configuration, selected paths, and SDK version. A mismatching digest requires a new benchmark catalog. Tests confirm unchanged repeated application is a no-op and changed definitions are rejected. |
+| P1 | A Gemini Files API cleanup failure replaced a successful transcription response and could trigger another paid call. File processing polling had no deadline. | Upload and processing are bounded. Deletion is best effort with a timeout and warning; it preserves both a paid response and a primary model error. Tests simulate cleanup failure and a permanently processing upload. |
+| P2 | Invalid inputs could reach downloads or catalog reset before validation; zero repeats silently became one run. | Numeric configuration and CLI inputs are validated before side effects. Missing media is checked before reset, Video-MME credentials before downloading, and an entirely disabled path set cannot report success. Tests verify reset/download ordering. |
+| P2 | Exports named a commit and file path but did not identify uncommitted source, dependency versions, or media bytes. Annotations followed a mutable dataset revision. | New manifests record Git dirty state, source digest and package versions; media is SHA-256 fingerprinted. Video-MME annotations are pinned to revision `ead1408f75b618502df9a1d8e0950166bf0a2a0b`; sample manifests include an annotation digest and only reuse the matching revision. |
+| P2 | The inspection notebook assumed specific paths and re-priced old runs using current environment settings. Its launcher supplied an unsupported kernel-install flag. | The notebook skips absent stages, reads the selected run's exported cost/configuration snapshot, and scopes errors to that run. Native-only and modular notebook execution is tested offline with no additional calls. The unsupported flag was removed. |
+| P2 | The upgrade watch installed a new SDK without resolving its dependencies; schema coverage omitted the WhisperX branch. | The watch now resolves newer SDK dependencies and runs the local media graph. Schema smoke applies all supported path combinations and Whisper, WhisperX, and Gemini ASR declarations twice in an isolated home. |
+| P2 | Prominent prose conflated response-based estimates with invoices, phrase checks with quality, and nonsignificance with equivalence. | README, workflow, paper, blog, and showcase state cost exclusions, coverage differences, sample and inference limitations, and historical SDK provenance. The paper PDF was rebuilt and visually checked. |
+
+## Remaining SDK boundary
+
+**Pixeltable 0.7.15 still loses a Gemini response whose `candidates` field is `None`.** Its built-in `generate_content` iterates `result.get('candidates', [])`, which raises `TypeError` for that value. The cell records the error, but the refusal response and reported usage are not stored. This was reproduced offline against the installed release. The application now keeps its cost unknown and does not automatically retry this deterministic parsing failure.
+
+Fixing this correctly belongs in the SDK's response normalization (`result.get('candidates') or []`), followed by validation of the stored refusal response and usage. A wrapper that catches the exception cannot recover the lost response. This review avoided duplicating the SDK's native video serialization and Files API handling or modifying private provider globals in production. Consequently, **full refusal-response inspectability is not established**, and historical refusals cannot be repaired from existing exports.
+
+## Research interpretation
+
+Reanalysis of the same 123 recorded questions from 41 videos preserves all point accuracies and recorded costs:
+
+| Path | Correct | Accuracy | 95% video-cluster percentile interval |
+|------|--------:|---------:|--------------------------------------:|
+| Native Gemini | 98 / 123 | 79.7% | [70.7%, 87.8%] |
+| Native Gemini, low resolution | 103 / 123 | 83.7% | [74.8%, 91.1%] |
+| Orchestrated Gemini | 98 / 123 | 79.7% | [71.5%, 87.0%] |
+| Nova Lite | 72 / 123 | 58.5% | [50.4%, 66.7%] |
+
+Paired video-level p-values are 0.273 for native versus low resolution, 1.000 for native versus orchestrated, and 0.498 for low resolution versus orchestrated. These do not demonstrate equivalent accuracy. The videos were locally available, not a random draw of the full benchmark. Percentile intervals can collapse on small all-correct/all-wrong strata. Provider baselines also differ in coverage: fal sees only the first 120 seconds and Nova ignores audio. The Pursuit checks count clip-specific phrases and cannot establish semantic quality or speaker correctness.
+
+All historical costs are estimates from the final stored responses at dated rates. They exclude unrecorded retries and interrupted attempts, lost refusal usage, local compute, storage, and egress. `numbers.json` and figures use corrected inference over saved predictions; original result directories retain their recorded definitions and version metadata.
+
+## Verification and boundaries
+
+- Pixeltable 0.7.15 installed through the declared package dependency; pin check and dependency consistency check passed.
+- Final validation on 2026-10-09: **86 tests passed**. The offline suite covers provider/accounting failures, graph execution, evidence reuse, batch-scoped retry, native/modular notebook execution, and renderer security/provenance checks. The only warnings are the SDK's upstream scene-detection deprecation warning.
+- Real isolated TableModel application passed twice for every exercised path set, including all three ASR declarations. No provider rows were inserted by that smoke check.
+- `run-media-demo` generated a real four-second MP4, inserted one row, and verified four timestamped 128x96 thumbnails and two audio segments; no provider calls occurred and its temporary catalog was removed.
+- Both command-line help checks and lint passed. The research figures regenerated from saved exports. The 14-page PDF compiled and passed visual inspection of all pages, including detailed table and figure checks; small TeX overfull warnings had no visible defect.
+
+Live Gemini, fal, and Bedrock transport, billing, model availability, and quota behavior were not exercised. Local GGUF/WhisperX model downloads, GPU inference, and quality were not validated. Deployment, authentication, upload quotas, admission control, concurrency load, and invoice reconciliation are outside this local SDK/research showcase. Existing real catalogs were not changed; the upgraded frozen definition will request a rebuild, and saved runs should be exported before any reset.
+
+## Developer path
+
+Start with `run-media-demo`, inspect `local_demo.py`, then read `schema.py` and the extension points in [WORKFLOW.md](WORKFLOW.md). Provider choices and transformations remain ordinary SDK expressions. Query-agnostic preparation can be reused by many request rows, as Video-MME demonstrates. Materialized query results need deliberate refresh after their source evidence changes; the workflow now makes that dependency explicit.

@@ -1,9 +1,17 @@
-"""Path selection for the Pursuit benchmark CLI (mirrors Video-MME --paths)."""
+"""Path selection shared by the Pursuit and Video-MME CLIs."""
 
 from __future__ import annotations
 
-ALL_PATHS = frozenset({'1', '2', '3', '4', '5'})
-# Showcase default: Gemini native vs orchestrated (OSS/fal/Nova opt-in).
+PATH_LABELS = {
+    '1': 'Native Gemini (full video)',
+    '1L': 'Native Gemini, low media resolution',
+    '2': 'Orchestrated Gemini (keyframes + ASR + synthesis)',
+    '3': 'Open-source local stack (keyframes + ASR + synthesis)',
+    '4': 'Native fal video-understanding (first 120 s)',
+    '5': 'Native Amazon Nova (Bedrock)',
+}
+ALL_PATHS = frozenset(PATH_LABELS)
+# Showcase default: the same Gemini model, native vs orchestrated.
 DEFAULT_PATHS = frozenset({'1', '2'})
 
 
@@ -11,31 +19,21 @@ def parse_paths(
     raw: str | None,
     *,
     allowed: frozenset[str] = ALL_PATHS,
-    default: frozenset[str] | None = None,
+    default: frozenset[str] = DEFAULT_PATHS,
 ) -> set[str]:
-    default_paths = set(default if default is not None else DEFAULT_PATHS)
-    if not raw or not str(raw).strip():
-        return default_paths
-    parts = {p.strip() for p in str(raw).split(',') if p.strip()}
-    unknown = parts - set(allowed)
+    if not raw or not raw.strip():
+        return set(default)
+    parts = {p.strip().upper() for p in raw.split(',') if p.strip()}
+    unknown = parts - allowed
     if unknown:
-        allowed_label = ','.join(sorted(allowed))
-        raise ValueError(f'Unknown paths {unknown}; use subset of {allowed_label}')
+        raise ValueError(
+            f'Unknown paths {sorted(unknown)}; use a subset of {",".join(sorted(allowed))}'
+        )
     return parts
 
 
 def apply_skip_flags(
-    paths: set[str],
-    *,
-    skip_oss: bool = False,
-    skip_fal: bool = False,
-    skip_nova: bool = False,
+    paths: set[str], *, skip_oss: bool = False, skip_fal: bool = False, skip_nova: bool = False
 ) -> set[str]:
-    out = set(paths)
-    if skip_oss:
-        out.discard('3')
-    if skip_fal:
-        out.discard('4')
-    if skip_nova:
-        out.discard('5')
-    return out
+    skipped = {p for p, skip in (('3', skip_oss), ('4', skip_fal), ('5', skip_nova)) if skip}
+    return set(paths) - skipped

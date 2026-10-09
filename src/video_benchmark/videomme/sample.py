@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import random
 from collections import defaultdict
@@ -13,6 +14,7 @@ from video_benchmark.videomme import DEFAULT_N, DEFAULT_SEED, MANIFEST_NAME, VID
 DURATION_BUCKETS = ('short', 'medium', 'long')
 HF_DATASET = 'lmms-lab/Video-MME'
 HF_CONFIG = 'videomme'
+HF_REVISION = 'ead1408f75b618502df9a1d8e0950166bf0a2a0b'
 
 
 def _row_to_dict(row: dict[str, Any]) -> dict[str, Any]:
@@ -38,7 +40,7 @@ def load_videomme_rows() -> list[dict[str, Any]]:
     """Load full Video-MME annotation split from Hugging Face."""
     from datasets import load_dataset
 
-    ds = load_dataset(HF_DATASET, HF_CONFIG, split='test')
+    ds = load_dataset(HF_DATASET, HF_CONFIG, split='test', revision=HF_REVISION)
     return [_row_to_dict(dict(row)) for row in ds]
 
 
@@ -109,9 +111,7 @@ def sample_questions(
     if len(selected) < n:
         used = {r['question_id'] for r in selected}
         leftover = [
-            r
-            for r in rows
-            if r['question_id'] not in used and r['video_id'] not in exclude
+            r for r in rows if r['question_id'] not in used and r['video_id'] not in exclude
         ]
         rng.shuffle(leftover)
         selected.extend(leftover[: n - len(selected)])
@@ -158,6 +158,10 @@ def save_manifest(
         'n': n,
         'dataset': HF_DATASET,
         'config': HF_CONFIG,
+        'dataset_revision': HF_REVISION,
+        'annotations_sha256': hashlib.sha256(
+            json.dumps(questions, sort_keys=True, ensure_ascii=False).encode()
+        ).hexdigest(),
         'questions': questions,
         'videos': unique_videos(questions),
         'downloads': downloads or {},

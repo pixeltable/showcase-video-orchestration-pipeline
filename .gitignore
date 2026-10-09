@@ -14,7 +14,11 @@ results/*
 !results/.gitkeep
 !results/golden/
 !results/golden/**
+# The exports the paper cites.
+!results/paper/
+!results/paper/**
 assets/*.mp4
 assets/videomme/
+assets/nova/
 .vscode/
 .DS_Store

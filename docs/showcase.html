@@ -3,157 +3,306 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Pixeltable video orchestration — showcase</title>
+  <title>Video orchestration showcase</title>
   <style>
     :root {
-      --bg: #0f1419;
-      --panel: #1a222c;
-      --text: #e8eef4;
-      --muted: #9aabbc;
-      --accent: #3d9cf0;
-      --border: #2a3542;
+      --bg: #fcfcfb; --panel: #ffffff; --text: #0b0b0b; --muted: #52514e;
+      --accent: #185da8; --border: #e4e3df; --error: #9e302c; color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a19; --panel: #232322; --text: #ffffff; --muted: #c3c2b7;
+        --accent: #86baff; --border: #383835; --error: #ffa7a0; color-scheme: dark;
+      }
     }
     * { box-sizing: border-box; }
     body {
-      margin: 0;
-      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-      background:
-        radial-gradient(1200px 600px at 10% -10%, #1c3a55 0%, transparent 55%),
-        radial-gradient(900px 500px at 100% 0%, #243018 0%, transparent 50%),
-        var(--bg);
-      color: var(--text);
-      min-height: 100vh;
+      margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text);
     }
-    header {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 2.5rem 1.5rem 1rem;
-    }
-    h1 {
-      font-family: "IBM Plex Serif", Georgia, serif;
-      font-weight: 600;
-      font-size: clamp(1.6rem, 3vw, 2.2rem);
-      margin: 0 0 0.5rem;
-      letter-spacing: -0.02em;
-    }
-    .lede {
-      color: var(--muted);
-      max-width: 46rem;
-      line-height: 1.5;
-      margin: 0;
-    }
-    .meta {
-      margin-top: 1rem;
-      font-size: 0.9rem;
-      color: var(--muted);
-    }
-    .grid {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 1rem 1.5rem 3rem;
-      display: grid;
-      gap: 1rem;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-    @media (max-width: 960px) {
-      .grid { grid-template-columns: 1fr; }
-    }
-    .card {
-      background: color-mix(in srgb, var(--panel) 92%, transparent);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1rem 1.1rem 1.2rem;
-      min-height: 18rem;
-      animation: rise 0.55s ease both;
-    }
-    .card:nth-child(2) { animation-delay: 0.08s; }
-    .card:nth-child(3) { animation-delay: 0.16s; }
-    @keyframes rise {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: none; }
-    }
-    h2 {
-      font-size: 1rem;
-      margin: 0 0 0.35rem;
-      color: var(--accent);
-      font-weight: 600;
-    }
-    .cost {
-      margin: 0 0 0.75rem;
-      font-variant-numeric: tabular-nums;
-      font-weight: 600;
-    }
-    pre {
-      margin: 0;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-family: "IBM Plex Mono", ui-monospace, monospace;
-      font-size: 0.78rem;
-      line-height: 1.45;
-      color: var(--text);
-      max-height: 28rem;
-      overflow: auto;
-    }
-    footer {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 0 1.5rem 2.5rem;
-      color: var(--muted);
-      font-size: 0.85rem;
+    header, main, footer { max-width: 1040px; margin: 0 auto; padding: 1.5rem 24px; }
+    header { padding-top: 3rem; }
+    h1 { font-size: clamp(1.7rem, 4vw, 2.5rem); line-height: 1.15; margin: 0 0 1rem; }
+    h2 { font-size: 1.5rem; margin: 0 0 1rem; }
+    h3 { font-size: 1.15rem; margin: 0 0 0.5rem; }
+    p { max-width: 72ch; line-height: 1.6; overflow-wrap: anywhere; }
+    .meta, footer, .cost, caption { color: var(--muted); }
+    nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+    nav a, summary { min-height: 44px; display: inline-flex; align-items: center; }
+    a { color: var(--accent); text-underline-offset: 0.2em; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+    ::selection { background: var(--accent); color: var(--bg); }
+    section { margin-bottom: 3rem; }
+    .flow { display: grid; grid-template-columns: repeat(4, 1fr); padding: 0;
+             list-style-position: inside; gap: 1.25rem; }
+    .flow li { border-top: 1px solid var(--border); padding-top: 1rem; line-height: 1.6; }
+    .flow span { display: block; margin-top: 0.35rem; color: var(--muted); }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    caption { text-align: left; padding-bottom: 0.75rem; }
+    td, th { padding: 0.8rem 0.6rem; border-bottom: 1px solid var(--border); text-align: left; }
+    td { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    th:first-child { min-width: 180px; }
+    article { border-top: 1px solid var(--border); padding: 1.5rem 0; scroll-margin-top: 1rem; }
+    .cost { font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+    summary { cursor: pointer; color: var(--accent); text-decoration: underline;
+               text-underline-offset: 0.2em; }
+    summary::before { content: '+ '; margin-inline-end: 0.5rem; }
+    details[open] summary::before { content: '− '; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 1rem;
+          line-height: 1.65; max-width: 75ch; padding: 1rem 0; margin: 0; }
+    .error { color: var(--error); }
+    @media (max-width: 600px) {
+      header, main, footer { padding-inline: 16px; }
+      header { padding-top: 2rem; }
+      .flow { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>Own the stack</h1>
-    <p class="lede">
-      Same clip, same question — native Gemini vs modular orchestration vs open source.
-      Generated from <code>results/golden/</code>.
+    <h1>Video orchestration you can inspect.</h1>
+    <p>Compare a native video call with a pipeline of keyframes, audio, captions, and synthesis.
+      Pixeltable stores the media and computed results together, so you can inspect evidence,
+      change a transform, and query the result through the SDK.</p>
+    <nav aria-label="Showcase resources">
+      <a href="https://github.com/pixeltable/showcase-video-orchestration-pipeline">Run the showcase</a>
+      <a href="https://github.com/pixeltable/showcase-video-orchestration-pipeline/blob/main/src/video_benchmark/schema.py">Inspect the pipeline</a>
+      <a href="https://github.com/pixeltable/showcase-video-orchestration-pipeline/blob/main/docs/WORKFLOW.md">Reproduce the experiment</a>
+    </nav>
+    <p class="meta">
+      Saved question: Summarize the main activities, speakers, and visual events in this video.<br />
+      Video: 255.0 s · run 20260928T200227Z-d5fc94<br />
+      Recorded SDK: Pixeltable
+      0.7.11 ·
+      exported 2026-09-28T20:06:10Z
     </p>
-    <p class="meta">Query: Summarize the main activities, speakers, and visual events in this video.<br />Duration: 255.0s · tag fair_v1_nova_pro</p>
   </header>
-  <section class="grid">
-    <article class="card"><h2>Path 1 — Native Gemini</h2><p class="cost">$0.114</p><pre>This video clip from &quot;The Pursuit of Happyness&quot; features Chris Gardner (Will Smith) attending a job interview with several executives, most notably Jay.
+  <main>
+    <section aria-labelledby="pipeline-title">
+      <h2 id="pipeline-title">What the modular path keeps</h2>
+      <ol class="flow">
+        <li><strong>Source video</strong><span>A typed video column and scene cuts.</span></li>
+        <li><strong>Media views</strong><span>Sampled images and audio chunks.</span></li>
+        <li><strong>Evidence</strong><span>Frame captions and a reusable transcript.</span></li>
+        <li><strong>Answers</strong>
+          <span>Synthesis, usage, errors, and cost expressions.</span></li>
+      </ol>
+    </section>
+    <section aria-labelledby="comparison-title">
+      <h2 id="comparison-title">One clip, one question, every saved path</h2>
+      <div class="table-scroll" role="region" aria-label="Saved path comparison" tabindex="0">
+        <table><caption>Recorded results from this clip;
+          phrase checks are diagnostics, not a quality benchmark.</caption>
+          <thead><tr><th scope="col">Path</th><th scope="col">List estimate</th>
+            <th scope="col">Response-accounted</th><th scope="col">Phrase checks</th>
+            <th scope="col">Words</th></tr></thead>
+          <tbody><tr><th scope="row"><a href="#path-1">Native Gemini (full video)</a></th><td>$0.0371</td><td>$0.0371</td><td>5/5</td><td>808</td></tr><tr><th scope="row"><a href="#path-1L">Native Gemini, low media resolution</a></th><td>$0.0230</td><td>$0.0230</td><td>5/5</td><td>973</td></tr><tr><th scope="row"><a href="#path-2">Orchestrated Gemini (keyframes + ASR + synthesis)</a></th><td>$0.0320</td><td>$0.0320</td><td>5/5</td><td>552</td></tr><tr><th scope="row"><a href="#path-4">Native fal video-understanding (first 120 s)</a></th><td>$0.2400</td><td>$0.2400</td><td>2/5</td><td>703</td></tr><tr><th scope="row"><a href="#path-5">Native Amazon Nova (Bedrock)</a></th><td>$0.0600</td><td>$0.0600</td><td>1/5</td><td>112</td></tr></tbody>
+        </table>
+      </div>
+      <p class="meta">The fal path sees only the first 120 seconds. Other paths use the full clip or
+        sampled evidence from it. Inspect the answers before comparing their coverage.</p>
+    </section>
+    <section aria-labelledby="answers-title">
+      <h2 id="answers-title">Inspect answers and stage accounting</h2>
+      <article id="path-1"><h3>Native Gemini (full video)</h3><p class="cost">$0.0371 list, $0.0371 response-accounted · 808 words · 5/5 phrase checks</p><details><summary>Read the saved answer</summary><pre>This video clip, titled &quot;The Pursuit of Happyness,&quot; shows a pivotal job interview scene.
 
-**Main Activities:**
-1.  **Arrival and Explanation:** Chris, visibly sweaty and disheveled, rushes into the professional office and then into a conference room, where several suited men are waiting for his interview. He immediately addresses his appearance, confessing he was arrested for unpaid parking tickets and had to run from the police station after painting his apartment, thus appearing in his current state.
-2.  **Interview Questions:** The interviewers probe Chris about his background, his determination (as vouched for by Jay), and his intelligence. Chris confidently asserts his ability to find answers even if he doesn&#x27;t know them initially.
-3.  **Humorous Exchange:** The lead interviewer, Jay, poses a hypothetical question: &quot;What would you say if a guy walked in for an interview without a shirt on... and I hired him?&quot; After a pause, Chris cleverly replies, &quot;He must&#x27;ve had on some really nice pants,&quot; which makes the entire panel erupt in laughter.
-4.  **Job Offer Discussion:** After the interview, as Chris is leaving, Jay…</pre></article><article class="card"><h2>Path 2 — Orchestrated Gemini</h2><p class="cost">$0.039</p><pre>The video details a pivotal job interview and its immediate aftermath, revolving around Chris Gardner&#x27;s determined pursuit of a position as a stockbroker trainee despite challenging circumstances. The narrative unfolds through a series of intense dialogues and observations within a professional office environment.
+The video opens at **0:00** with Chris Gardner (played by Will Smith) walking through a busy office, looking disheveled and sweaty, but with a hopeful expression. He enters a modern boardroom where several men in suits are seated around a large table.
 
-**Main Activities:**
-1.  Chris Gardner undergoes a high-stakes job interview for a stockbroker trainee position, explaining his unconventional attire.
-2.  The interviewers question Chris about his background, determination, and ability to learn the business.
-3.  A comedic exchange regarding a hypothetical interviewee without a shirt lightens the mood.
-4.  Chris is informally offered the trainee position, leading to a moment of unexpected hesitation due to its unpaid nature.
-5.  An intense discussion ensues between one of the interviewers and his colleague about securing Chris&#x27;s acceptance.
+At **0:07**, a woman with red curly hair smiles at Chris, and he walks past her into the room. He begins to greet and shake hands with the men at the table, introducing himself as &quot;Chris Gardner.&quot;
 
-**Speakers:**
-*   **Speaker 1:** An interviewer, likely a partner or senior manager, who primarily questions Chris and later discusses Chris with Jay.
-*   **Speaker 2:** Chris Gardner, the determined job applicant.
-*   **Speaker 3:** Jay, another interviewer or colleague of Speaker 1…</pre></article><article class="card"><h2>Path 3 — Open source</h2><p class="cost">$0.000</p><pre>**Main Activities:**
-1. Chris Gardner arrives at the office, dressed in a casual outfit and explaining his presence.
-2. A discussion about Gardner&#x27;s background and qualities begins with colleagues expressing admiration for his earnestness and diligence.
-3. The conversation shifts to Gardner’s recent arrest due to failure to pay parking tickets.
-4. Colleagues discuss Gardner’s determination and intelligence, noting he has been seen multiple times at the office.
-5. Gardner shares a story about being first in class during school days and in military training.
-6. The video ends with a humorous exchange where Jay offers to fill Gardner&#x27;s spot for an interview.
+At **0:28**, Chris finally sits down at the table, still looking quite sweaty. He explains his appearance to the interview panel: **&quot;I&#x27;ve been sitting out there for the last half hour trying to come up with a story that would explain my being here dressed... like this. And... And I wanted to come up with a story that would demonstrate qualities that I&#x27;m sure you all admire here, like... like earnestness or diligence. And team-playing. Something. And I couldn&#x27;t think... of anything.&quot;**
 
-**Speakers:**
-- SPEAKER_00: Chris Gardner
-- SPEAKER_01: Jay (a colleague)
-- SPEAKER_02: Mr. Twistle (likely another colleague)
+At **0:52**, Chris, with a direct gaze, delivers the truth: **&quot;So the truth is... I was arrested for failure to pay parking tickets.&quot;** The interviewer named Jay (Man 1) reacts with **&quot;Parking tickets?&quot;** while another panelist (Man 2) exclaims, **&quot;What?&quot;** Chris clarifies that he ran **&quot;all the way here from the... The Polk Station, the police station.&quot;**
 
-**Visual Events:**
-- [5.32s - 16.3s] OSS-VLM shows a man with short, dark hair and a mustache in a professional setting.
-- [15.92s - 28.7s] A man standing in a room speaks or reacts to something off-camera.
-- [26.56s - 48.8s] Two men seated at a conference table discuss, with one speaking and gesturing.
-- [37.7s - 59.6s] A man stands in a modern office setting explaining his situation.
-- [57.0s - 122.16…</pre></article>
-  </section>
+Man 2 asks, **&quot;What were you doing before you were arrested?&quot;** Chris replies, **&quot;I was, uh... painting my apartment.&quot;** Man 2 humorously inquires, **&quot;Is it dry now?&quot;** to which Chris replies with a slight smile, **&quot;Uh. I hope so.&quot;**
+
+At **1:13**, Man 2 mentions, **&quot;Jay says you&#x27;re pretty determined.&quot;** Jay adds, **&quot;Oh, he&#x27;s been waiting outside the front of the building with some 40-pound gizmo for over a month.&quot;** Man 2 then praises Chris, **&quot;He said you&#x27;re smart.&quot;** Chris modestly responds, **&quot;Well, I like to think so.&quot;**
+
+Man 2 asks Chris if he wants to learn the business, and Chris affirms, **&quot;Yes, sir, I wanna learn this business.&quot;** He&#x27;s then asked if he&#x27;s started learning on his own, to which he answers, **&quot;Absolutely.&quot;**
+
+After asking Jay how many times he&#x27;s seen Chris (**&quot;One too many, apparently.&quot;**), and confirming Chris is not usually dressed like this, Man 2 questions Chris&#x27;s high school achievements. Chris reveals he was **&quot;First in your class in school? High school? Yes, sir.&quot;** and when asked how many in the class, he says, **&quot;Uh, 12. It was a small town.&quot;** Man 2 chuckles, **&quot;I&#x27;ll say.&quot;** Chris quickly adds, **&quot;But I was also first in my radar class in... in the Navy, and that was a class of 20.&quot;**
+
+At **2:05**, Chris asks, **&quot;Can I say something? Um... I&#x27;m the type of person, if you ask me a question, and I don&#x27;t know the answer, I&#x27;m gonna tell you that I don&#x27;t know. But I bet you what. I know how to find the answer. And I will find the answer. Is that fair enough?&quot;**
+
+Man 2 then poses a hypothetical question to Chris at **2:27**: **&quot;Chris. What would you say if a guy walked in for an interview without a shirt on, and I hired him? What would you say?&quot;** Chris pauses, thinks, and then delivers a punchline that makes the panel burst into laughter: **&quot;He must&#x27;ve had on some really nice pants.&quot;**
+
+At **2:57**, Chris exits the boardroom, still looking pleased. Jay follows him out into the hallway. Jay tells Chris, **&quot;Chris... I don&#x27;t know how you did it dressed as a garbage man, but you really pulled it off in there.&quot;** Chris thanks him, **&quot;Thank you very much, Mr. Twistle.&quot;** Jay then offers, **&quot;Hey, now you can call me Jay. We&#x27;ll talk to you soon.&quot;**
+
+Chris, however, misunderstands, saying, **&quot;All right, so I&#x27;ll let you know, Jay.&quot;** Jay looks confused, asking, **&quot;You&#x27;ll... &#x27;You&#x27;ll let me know, Jay&#x27;? What do you mean?&quot;** Chris explains, **&quot;Yeah. I&#x27;ll give you a call tomorrow sometime...&quot;** Jay, now visibly annoyed, interjects, **&quot;What are you talking...? You hounded me for this. You stood here... Listen.&quot;**
+
+At **3:22**, Chris reveals his crucial concern: **&quot;There&#x27;s no salary. No. I was not aware of that. My circumstances have changed some, and I need to be certain that I&#x27;ll be able to sus—&quot;** Jay cuts him off, **&quot;All right. Okay.&quot;**
+
+Jay becomes serious, emphasizing his own reputation: **&quot;Tonight. I swear, I will fill your spot. I promise. If you back out, you know what I&#x27;ll look like to the partners?&quot;** Chris replies, **&quot;Yes. An ass...&quot;** (the word is bleeped out). Jay confirms emphatically, **&quot;Yeah, an ass A***, all the way. You are a piece of work.&quot;**
+
+At **3:56**, as Chris walks into the elevator, Jay points at him and reiterates, **&quot;Tonight.&quot;** This final exchange signifies that Chris has secured the internship, despite the initial lack of salary and his difficult circumstances.</pre></details></article><article id="path-1L"><h3>Native Gemini, low media resolution</h3><p class="cost">$0.0230 list, $0.0230 response-accounted · 973 words · 5/5 phrase checks</p><details><summary>Read the saved answer</summary><pre>This video clip is from the movie &quot;The Pursuit of Happyness.&quot;
+
+Here&#x27;s a summary of the main activities, speakers, and visual events:
+
+**0:00 - 0:15: Introduction and Arrival**
+*   **Visuals:** The video opens with Chris Gardner (Will Smith) running through a busy, open-plan office, looking dishevelled, sweaty, and wearing a jacket over a tank top. He walks into a sleek conference room where several men in suits are already seated at a long table. A woman points him towards the table.
+*   **Dialogue:** (No dialogue, just background office noise and music.)
+
+**0:15 - 0:27: Introductions to the Interview Panel**
+*   **Visuals:** Chris walks around the table, shaking hands with each of the four interviewers, briefly introducing himself. The room is modern with large windows overlooking a city skyline.
+*   **Chris Gardner:** &quot;Chris Gardner. How are you? Good morning. Chris Gardner. Good to see you again. Chris Gardner, pleasure.&quot;
+
+**0:27 - 0:52: Chris Explains His Appearance**
+*   **Visuals:** Chris sits down at the table, gesturing with his hands. The interviewers are attentive.
+*   **Chris Gardner:** &quot;I&#x27;ve been sitting out there for the last half hour trying to come up with a story that would explain my being here dressed... like this. And and I wanted to come up with a story that would demonstrate qualities that I&#x27;m sure you all admire here, like... like earnestness or diligence. And team-playing. To... something. And I couldn&#x27;t think of anything.&quot;
+
+**0:52 - 1:12: The Truth About His Arrest**
+*   **Visuals:** Close-up shots of Chris and the older lead interviewer.
+*   **Chris Gardner:** &quot;So the truth is, I was arrested for failure to pay parking tickets.&quot;
+*   **Jay (Younger Interviewer):** &quot;Parking tickets? What?&quot;
+*   **Chris Gardner:** &quot;And I ran all the way here from the... the Polk Station, the police station.&quot;
+*   **Lead Interviewer (Older Man):** &quot;What were you doing before you were arrested?&quot;
+*   **Chris Gardner:** &quot;I was, uh, painting my apartment.&quot;
+*   **Lead Interviewer (Older Man):** &quot;Is it dry now?&quot;
+*   **Chris Gardner:** &quot;Uh. I hope so.&quot;
+
+**1:12 - 1:56: Discussion of Determination and Intelligence**
+*   **Visuals:** The interviewers comment on Chris.
+*   **Lead Interviewer (Older Man):** &quot;Jay says you&#x27;re pretty determined.&quot;
+*   **Jay (Younger Interviewer):** &quot;Oh, he&#x27;s been waiting outside the front of the building with some 40-pound gizmo for over a month.&quot;
+*   **Lead Interviewer (Older Man):** &quot;He said you&#x27;re smart.&quot;
+*   **Chris Gardner:** &quot;I like to think so.&quot;
+*   **Lead Interviewer (Older Man):** &quot;And you want to learn this business?&quot;
+*   **Chris Gardner:** &quot;Yes, sir, I want to learn this business.&quot;
+*   **Lead Interviewer (Older Man):** &quot;Have you already started learning on your own?&quot;
+*   **Chris Gardner:** &quot;Absolutely.&quot;
+*   **Lead Interviewer (Older Man):** &quot;Jay?&quot;
+*   **Jay (Younger Interviewer):** &quot;Yes, sir.&quot;
+*   **Lead Interviewer (Older Man):** &quot;How many times have you seen Chris?&quot;
+*   **Jay (Younger Interviewer):** &quot;Yeah, I don&#x27;t know. One too many, apparently.&quot;
+*   **Lead Interviewer (Older Man):** &quot;Was he ever dressed like this?&quot;
+*   **Chris Gardner:** &quot;No. No. Jacket and tie.&quot;
+*   **Lead Interviewer (Older Man):** &quot;First in your class in school? High school?&quot;
+*   **Chris Gardner:** &quot;Yes, sir.&quot;
+*   **Lead Interviewer (Older Man):** &quot;How many in the class?&quot;
+*   **Chris Gardner:** &quot;Uh, 12.&quot;
+*   **Lead Interviewer (Older Man):** &quot;It was a small town.&quot;
+*   **Chris Gardner:** &quot;I&#x27;ll say.&quot;
+
+**1:56 - 2:27: Chris&#x27;s Problem-Solving Philosophy**
+*   **Visuals:** Chris continues to speak earnestly, maintaining eye contact.
+*   **Chris Gardner:** &quot;But I was also first in my radar class in... in the Navy, and that was a class of 20.&quot;
+*   **Chris Gardner:** &quot;Can I say something? Um... I&#x27;m the type of person, if you ask me a question, and I don&#x27;t know the answer, I&#x27;m gonna tell you that I don&#x27;t know. But I bet you what. I know how to find the answer. And I will find the answer. Is that fair enough?&quot;
+
+**2:27 - 2:56: The &quot;Nice Pants&quot; Joke**
+*   **Visuals:** The Lead Interviewer poses a hypothetical question, Chris responds, and all interviewers burst into laughter.
+*   **Lead Interviewer (Older Man):** &quot;Chris. What would you say if a guy walked in for an interview without a shirt on? And I hired him. What would you say?&quot;
+*   **Chris Gardner:** &quot;He must&#x27;ve had on some really nice pants.&quot;
+*   **All Interviewers:** (Laughing heartily)
+
+**2:56 - 3:56: The Confrontation Outside the Interview**
+*   **Visuals:** Chris is pressing an elevator button, still looking tired and dishevelled. Jay (Younger Interviewer) approaches him in the hallway outside the conference room.
+*   **Jay (Younger Interviewer):** &quot;Chris... I don&#x27;t know how you did it dressed as a garbage man, but you really pulled it off in there.&quot;
+*   **Chris Gardner:** &quot;Thank you very much, Mr. Twistle.&quot;
+*   **Jay (Younger Interviewer):** &quot;Hey, now you can call me Jay. We&#x27;ll talk to you soon.&quot;
+*   **Chris Gardner:** &quot;All right, so I&#x27;ll let you know, Jay.&quot;
+*   **Jay (Younger Interviewer):** &quot;You&#x27;ll... &#x27;You&#x27;ll let me know, Jay&#x27;? What do you mean?&quot;
+*   **Chris Gardner:** &quot;Yeah, I&#x27;ll give you a call tomorrow sometime...&quot;
+*   **Jay (Younger Interviewer):** &quot;What are you talking about? You hounded me for this. You stood here...&quot;
+*   **Chris Gardner:** &quot;Listen. There&#x27;s no salary. No. I was not aware of that. My circumstances have changed some, and I need to be certain that I&#x27;ll be able to sustain...&quot;
+*   **Jay (Younger Interviewer):** (Interrupts him) &quot;All right. Okay. Tonight. I swear, I will fill your spot. I promise. You know what I&#x27;ll look like if you back out, you know what I&#x27;ll look like to the partners?&quot;
+*   **Chris Gardner:** &quot;Yes. An ass.&quot; (Word is bleeped)
+*   **Jay (Younger Interviewer):** &quot;Yeah, an ass***, all the way.&quot; (Word is bleeped)
+*   **Jay (Younger Interviewer):** &quot;You are a piece of work.&quot;
+*   **Jay (Younger Interviewer):** (Points definitively) &quot;Tonight!&quot;
+
+**3:56 - End: Outro**
+*   **Visuals:** The video transitions to an outro screen for &quot;BINGE SOCIETY&quot; with options to subscribe and watch more videos.</pre></details></article><article id="path-2"><h3>Orchestrated Gemini (keyframes + ASR + synthesis)</h3><p class="cost">$0.0320 list, $0.0320 response-accounted · 552 words · 5/5 phrase checks</p><div class="table-scroll" role="region" aria-label="Stage accounting" tabindex="0"><table><caption>Saved stage accounting</caption><thead><tr><th scope="col">Stage</th><th scope="col">Calls</th><th scope="col">Failed cells</th><th scope="col">Unknown cost calls</th><th scope="col">Cost estimate</th></tr></thead><tbody><tr><th scope="row">captions</th><td>24</td><td>0</td><td>0</td><td>$0.0111</td></tr><tr><th scope="row">asr</th><td>1</td><td>0</td><td>0</td><td>$0.0124</td></tr><tr><th scope="row">synthesis</th><td>1</td><td>0</td><td>0</td><td>$0.0084</td></tr></tbody></table></div><details><summary>Read the saved answer</summary><pre>The video details a job interview for Chris Gardner, played by Will Smith, in a high-rise office setting.
+
+The video opens with Chris Gardner, visibly sweaty and disheveled in a grey collared shirt, looking around an office environment. His name is called repeatedly by an unseen Speaker 1 as he makes his way through the office. Chris eventually sits at a conference table across from several men in suits, including an older man (Speaker 2) and a man with light brown hair (Speaker 3, later identified as Jay).
+
+Chris (Speaker 1) begins by explaining his appearance, stating, &quot;I&#x27;ve been sitting out there for the last half hour trying to come up with a story that would explain my being here dressed like this.&quot; He admits he wanted a story to demonstrate qualities like &quot;earnestness or diligence, team play, something,&quot; but couldn&#x27;t think of anything. He then reveals, &quot;So the truth is, I was arrested for failure to pay parking tickets.&quot; Speaker 2 expresses surprise with &quot;Parking tickets?&quot;, and asks what Chris was doing before his arrest, to which Chris replies he was &quot;painting my apartment,&quot; humorously adding &quot;I hope so&quot; when asked if his dry now.
+
+Speaker 3 (Jay) interjects, noting Chris&#x27;s determination, mentioning he &quot;been waiting outside the front of the building with some 40-pound gizmo for over a month.&quot; Speaker 2 adds that Jay said Chris is smart, which Chris confirms he &quot;like to think so,&quot; and expresses his eagerness to learn the business. When asked about his academic record, Chris states he was &quot;First in your class in school&quot; in high school (a class of 12), and &quot;first in my radar class in in the Navy, and that was a class of 20.&quot; He then confidently states, &quot;I&#x27;m the type of person, if you ask me a question and I don&#x27;t know the answer, I&#x27;m going to tell you that I don&#x27;t know. But I bet you what, I know how to find the answer and I will find the answer.&quot; Speaker 2 then poses a hypothetical question about hiring a man who came to an interview without a shirt. Chris quickly delivers a witty response: &quot;He must have had on some really nice pants,&quot; which elicits laughter from the interviewers.
+
+Following the interview, Speaker 3 (Jay) praises Chris, saying, &quot;I don&#x27;t know how you did it dressed as a garbage man, but you really pulled it off in there.&quot; Chris thanks &quot;Mr. Twistle,&quot; but Jay corrects him to &quot;Jay.&quot; Chris then tells Jay he&#x27;ll &quot;let you know&quot; and &quot;give you a call tomorrow sometime,&quot; implying he&#x27;s weighing his options. Jay reacts with confusion and frustration, saying, &quot;What what are you talking about? You hounded me for this.&quot; Chris then reveals, &quot;Listen, there&#x27;s no salary. I was not aware of that. My circumstances have changed some and I need to be certain that I&#x27;ll be able to sustain.&quot; Speaker 2 pressures him, warning about how it would look to the partners if Chris backed out, leading Chris to complete the thought with &quot;Yes, an ass.&quot; Chris then promises, &quot;Tonight, I swear, I will fill your spot. I promise.&quot; Jay concludes by calling Chris &quot;a piece of work.&quot;
+
+The video ends with a &quot;Binge Society&quot; pink end screen, featuring two yellow rectangles and social media icons with the word &quot;SUBSCRIBE.&quot;</pre></details></article><article id="path-4"><h3>Native fal video-understanding (first 120 s)</h3><p class="cost">$0.2400 list, $0.2400 response-accounted · 703 words · 2/5 phrase checks</p><details><summary>Read the saved answer</summary><pre>This video is an excerpt from the movie &quot;The Pursuit of Happyness.&quot; It features Chris Gardner (Will Smith) during a job interview.
+
+Here&#x27;s a summary of the main activities, speakers, and visual events:
+
+**Beginning of the video (0:00-0:06):**
+* **Visual:** The video opens with a shot of Chris Gardner looking around a busy office space, appearing somewhat disheveled. The text overlay &quot;The Pursuit of Happyness&quot; is visible.
+* **Audio:** Upbeat, slightly tense music plays.
+
+**Chris Gardner enters the interview room (0:06-0:20):**
+* **Visual:** The scene transitions to a spacious office with a large window overlooking a city skyline. Four men in suits (interviewers) are seated at a long conference table. Chris Gardner, still in his disheveled attire, enters the room, walks past a female secretary who smiles at him, and approaches the table.
+* **Dialogue:**
+    * **Secretary:** &quot;Chris Gardner.&quot;
+    * **Chris Gardner:** &quot;How are you? Good morning.&quot;
+
+**Introductions and initial questions (0:20-0:27):**
+* **Visual:** Chris Gardner shakes hands with the interviewers at the table.
+* **Dialogue:**
+    * **Interviewer 1 (in a grey suit):** &quot;Chris Gardner. Good to see you again.&quot;
+    * **Chris Gardner:** &quot;Chris Gardner. Pleasure.&quot;
+
+**Chris Gardner explains his appearance (0:27-0:51):**
+* **Visual:** Chris Gardner sits down at the table, facing the interviewers, and speaks animatedly, gesturing with his hands. The camera cuts between shots of Chris speaking and the interviewers listening, sometimes showing one of them looking thoughtful or exchanging glances.
+* **Dialogue:**
+    * **Chris Gardner:** &quot;I&#x27;ve been sitting out there for the last half hour trying to come up with a story that would explain my being here dressed like this. And... And I wanted to come up with a story that would demonstrate qualities that I&#x27;m sure you all admire here, like... like earnestness or diligence. And team-playing. Something. And I couldn&#x27;t think... of anything.&quot;
+
+**Chris Gardner reveals his arrest (0:51-1:03):**
+* **Visual:** The scene remains focused on Chris Gardner and the interviewers. One interviewer, a man with white hair, looks at Chris intently.
+* **Dialogue:**
+    * **Interviewer 2 (man with white hair):** &quot;So the truth is...&quot;
+    * **Chris Gardner:** &quot;I was arrested for failure to pay parking tickets.&quot;
+    * **Interviewer 1:** &quot;Parking tickets?&quot;
+    * **Chris Gardner:** &quot;What? And I ran all the way here from the... the Polk Station, the police station.&quot;
+
+**Interviewers&#x27; questions about his past (1:03-1:20):**
+* **Visual:** The interviewers appear surprised and amused. Chris Gardner continues to explain his situation.
+* **Dialogue:**
+    * **Interviewer 2:** &quot;What were you doing before you were arrested?&quot;
+    * **Chris Gardner:** &quot;I was, uh... painting my apartment.&quot;
+    * **Interviewer 2:** &quot;Is it dry now?&quot;
+    * **Chris Gardner:** &quot;Uh. I hope so.&quot;
+    * **Interviewer 2:** &quot;Jay says you&#x27;re pretty determined.&quot;
+    * **Interviewer 1:** &quot;Oh, he&#x27;s been waiting outside the front of the building with some 40-pound gizmo for over a month.&quot;
+
+**Chris Gardner&#x27;s intelligence and ambition (1:20-1:30):**
+* **Visual:** Chris Gardner smiles, looking confident. The camera briefly focuses on his face.
+* **Dialogue:**
+    * **Interviewer 2:** &quot;He said you&#x27;re smart.&quot;
+    * **Chris Gardner:** &quot;Well, I like to think so.&quot;
+    * **Interviewer 2:** &quot;And you want to learn this business?&quot;
+    * **Chris Gardner:** &quot;Yes, sir, I wanna learn this business.&quot;
+    * **Interviewer 2:** &quot;Have you already started learning on your own?&quot;
+    * **Chris Gardner:** &quot;Absolutely.&quot;
+
+**Humorous exchange about his academic past (1:30-1:59):**
+* **Visual:** The interviewers exchange glances and smiles, clearly amused by Chris Gardner&#x27;s honesty and wit.
+* **Dialogue:**
+    * **Interviewer 2:** &quot;Jay?&quot;
+    * **Interviewer 1:** &quot;Yes, sir.&quot;
+    * **Interviewer 2:** &quot;How many times have you seen Chris?&quot;
+    * **Interviewer 1:** &quot;Yeah, I don&#x27;t know.&quot;
+    * **Interviewer 2:** &quot;One too many, apparently.&quot;
+    * **Interviewer 2:** &quot;Was he ever dressed like this?&quot;
+    * **Chris Gardner:** &quot;No. No. Jacket and tie.&quot;
+    * **Interviewer 2:** &quot;First in your class in school?&quot;
+    * **Chris Gardner:** &quot;High school?&quot;
+    * **Interviewer 2:** &quot;Yes, sir.&quot;
+    * **Chris Gardner:** &quot;Yes, sir.&quot;
+    * **Interviewer 2:** &quot;How many in the class?&quot;
+    * **Chris Gardner:** &quot;Uh, 12.&quot;
+    * **Chris Gardner:** &quot;It was a small town.&quot;
+    * **Interviewer 2:** &quot;I&#x27;ll say.&quot;
+    * **Chris Gardner:** &quot;But I was also first in my radar class in...&quot;
+
+The video ends with Chris Gardner beginning to elaborate on his radar class achievement, leaving the audience with the impression of his determination and intelligence despite his current predicament.</pre></details></article><article id="path-5"><h3>Native Amazon Nova (Bedrock)</h3><p class="cost">$0.0600 list, $0.0600 response-accounted · 112 words · 1/5 phrase checks</p><details><summary>Read the saved answer</summary><pre>At the beginning of the video, a man with a mustache is standing in an office with other people. He then walks into a conference room where three men are sitting at a table. The man in the middle introduces himself as Chris Gardner and explains that he is there to interview for a job. The other two men ask him questions about his background and qualifications. Chris answers their questions confidently and provides examples of his experience and skills. The men seem impressed and offer him the job. Chris thanks them and leaves the room. The video ends with a call to action to subscribe to the Binge Society YouTube channel.</pre></details></article>
+    </section>
+  </main>
   <footer>
-    Regenerate with <code>python scripts/render_showcase.py</code>.
-    Full answers including Paths 4–5: <code>results/golden/REPORT.md</code>.
+    <p>These are saved outputs, not a fresh run on the upgraded SDK.
+      List estimates exclude cache discounts;
+      response-accounted estimates include reported discounts.
+      Neither is an invoice total: unrecorded retry or failed-request charges, local compute,
+      storage, and egress are excluded. This page makes no API calls.</p>
   </footer>
 </body>
 </html>

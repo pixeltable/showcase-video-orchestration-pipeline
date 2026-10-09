@@ -1,4 +1,4 @@
-"""Video-MME cost-bounded dev slice (Paths 1,2,3,5; default 1+2)."""
+"""Video-MME multiple-choice evaluation (Paths 1, 1L, 2, 3, 5; default 1 and 2)."""
 
 from __future__ import annotations
 

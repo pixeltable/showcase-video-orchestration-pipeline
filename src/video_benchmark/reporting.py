@@ -1,504 +1,349 @@
-"""Comparison output and reproducible results export."""
+"""Export one run from the catalog: costs with token usage, answers, heuristic scores."""
 
 from __future__ import annotations
 
+import csv
 import json
 import platform
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-import pandas as pd
+import pixeltable as pxt
 
-from video_benchmark import pipeline
+from video_benchmark import pricing, provenance
 from video_benchmark.config import PROJECT_ROOT, BenchmarkConfig, config_manifest_dict
+from video_benchmark.paths import PATH_LABELS
+from video_benchmark.runner import table
+from video_benchmark.schema import PathPlan
+from video_benchmark.scoring import score_answer
+
+# path -> (table, answer column, cost column, per-call response columns)
+PATH_COLUMNS = {
+    '1': ('runs', 'native_answer', 'native_cost', ('native_response',)),
+    '1L': ('runs', 'native_low_answer', 'native_low_cost', ('native_low_response',)),
+    '2': ('syntheses', 'gemini_answer', 'gemini_total_cost', ('gemini_response',)),
+    '3': ('syntheses', 'oss_answer', 'oss_cost', ('oss_answer',)),
+    '4': ('runs', 'fal_answer', 'fal_cost', ('fal_response',)),
+    '5': ('runs', 'nova_answer', 'nova_cost', ('nova_response',)),
+}
+USAGE_COLUMNS = {
+    '1': ('runs', 'native_usage'),
+    '1L': ('runs', 'native_low_usage'),
+    '5': ('runs', 'nova_usage'),
+}
 
 
-def _finite_float(value, default: float = 0.0) -> float:
-    try:
-        if value is None or pd.isna(value):
-            return default
-        number = float(value)
-    except (TypeError, ValueError):
-        return default
-    if number != number:
-        return default
-    return number
+def _row(name: str, run_id: str, columns: set[str], call_columns: set[str]) -> dict[str, Any]:
+    """One row's values, plus `<col>__error` (the stored error message) for each call column."""
+    tbl = table(name)
+    select = {col: getattr(tbl, col) for col in sorted(columns | call_columns)}
+    select.update({f'{col}__error': getattr(tbl, col).errormsg for col in sorted(call_columns)})
+    rows = tbl.where(tbl.run_id == run_id).select(**select).collect()
+    if len(rows) == 0:
+        raise LookupError(f'No {name} row for run {run_id}')
+    return rows[0]
 
 
-def _frame_count_from_row(row: pd.Series) -> int:
-    frame_context = row.get('gemini_frame_context')
-    if isinstance(frame_context, list):
-        return len(frame_context)
-    rollup = row.get('gemini_vision_rollup')
-    if isinstance(rollup, dict):
-        return int(rollup.get('frame_count', 0) or 0)
-    return 0
+def add_usage(total: dict, usage: dict | None) -> dict:
+    """Sum token counts, including the per-modality breakdowns."""
+    if not usage:
+        return total
+    for key, value in usage.items():
+        if isinstance(value, dict):
+            bucket = total.setdefault(key, {})
+            for modality, tokens in value.items():
+                bucket[modality] = bucket.get(modality, 0) + int(tokens or 0)
+        else:
+            total[key] = total.get(key, 0) + int(value or 0)
+    return total
 
 
-def _audio_chunk_count_from_row(row: pd.Series) -> int:
-    if pipeline.audio_chunks is not None:
-        try:
-            return int(pipeline.audio_chunks.count())
-        except Exception:
-            pass
-    transcript_context = row.get('gemini_transcript_context')
-    if isinstance(transcript_context, list):
-        return len(transcript_context)
-    return 0
-
-
-def _synthesis_frame_count_from_row(row: pd.Series) -> int:
-    summarized = row.get('gemini_frame_context_summarized')
-    if isinstance(summarized, list):
-        return len(summarized)
-    return 0
-
-
-def _table_has_column(table, name: str) -> bool:
-    try:
-        return name in table.columns()
-    except Exception:
-        return hasattr(table, name)
-
-
-def _optional_col(name: str):
-    if pipeline.video_sources is None:
+def list_cost(usage: dict | None, model: str) -> float | None:
+    """Gemini cost of these tokens without the implicit-cache discount (list price)."""
+    if not usage:
         return None
-    if not _table_has_column(pipeline.video_sources, name):
-        return None
-    return getattr(pipeline.video_sources, name, None)
+    return pricing.gemini_cost_impl(pricing.uncached_usage_impl(usage), model)
 
 
-def _latest_video_row() -> pd.Series | None:
-    if pipeline.video_sources is None:
-        raise RuntimeError('Pipeline not initialized')
-    required = ['query', 'video_duration_sec']
-    optional = [
-        'native_insight',
-        'gemini_orchestrated_insight',
-        'oss_insight',
-        'native_cost',
-        'gemini_orchestrated_total',
-        'gemini_vision_track_cost',
-        'gemini_asr_cost',
-        'gemini_synthesis_cost',
-        'oss_cost',
-        'cost_delta_native_vs_gemini',
-        'gemini_frame_context',
-        'gemini_frame_context_summarized',
-        'gemini_transcript_context',
-        'gemini_vision_rollup',
-        'fal_insight',
-        'fal_cost',
-        'cost_delta_native_vs_fal',
-        'nova_insight',
-        'nova_cost',
-        'cost_delta_native_vs_nova',
-    ]
-    cols = []
-    for name in required:
-        cols.append(getattr(pipeline.video_sources, name))
-    for name in optional:
-        col = _optional_col(name)
-        if col is not None:
-            cols.append(col)
-    rows = pipeline.video_sources.select(*cols).tail(1).to_pandas()
-    if rows.empty:
-        return None
-    return rows.iloc[0]
-
-
-def build_comparison_dataframe() -> pd.DataFrame:
-    if pipeline.video_sources is None:
-        raise RuntimeError('Pipeline not initialized')
-    if pipeline.keyframes is None:
-        return pd.DataFrame()
-
-    summary_names = [
-        'query',
-        'native_insight',
-        'gemini_orchestrated_insight',
-        'oss_insight',
-        'native_cost',
-        'gemini_orchestrated_total',
-        'oss_cost',
-        'cost_delta_native_vs_gemini',
-        'gemini_frame_context',
-        'gemini_vision_rollup',
-        'fal_insight',
-        'fal_cost',
-        'nova_insight',
-        'nova_cost',
-    ]
-    summary_cols = []
-    for name in summary_names:
-        if name == 'query':
-            summary_cols.append(pipeline.video_sources.query)
-            continue
-        col = _optional_col(name)
-        if col is not None:
-            summary_cols.append(col)
-
-    summary = pipeline.video_sources.select(*summary_cols).collect().to_pandas()
-
-    video_row = summary.iloc[-1] if not summary.empty else {}
-
-    # Per-keyframe Gemini columns exist only in per_frame mode; batched mode
-    # stores insights on the parent gemini_frame_context list.
-    has_per_frame_gemini = _table_has_column(pipeline.keyframes, 'gemini_frame_insight')
-    has_oss_frame = _table_has_column(pipeline.keyframes, 'oss_frame_insight')
-    select_kwargs: dict = {
-        'frame_position': pipeline.keyframes.global_position_ms,
-        'segment_start': pipeline.keyframes.segment_start,
+def _stage(rows: list[dict], cost_key: str, usage_key: str, model: str) -> dict[str, Any]:
+    usage: dict = {}
+    for row in rows:
+        add_usage(usage, row.get(usage_key))
+    return {
+        'calls': len(rows),
+        'failed_calls': sum(bool(row.get('error')) for row in rows),
+        'unknown_cost_calls': sum(row.get(cost_key) is None for row in rows),
+        # Billed but no text: a recitation or safety stop, which raises no error.
+        'empty_outputs': sum(
+            1 for row in rows if row.get(cost_key) is not None and not row['text']
+        ),
+        'cost_usd': (sum(row[cost_key] for row in rows)
+                     if all(row.get(cost_key) is not None for row in rows) else None),
+        'response_accounted_cost_usd': sum(row.get(cost_key) or 0.0 for row in rows),
+        'list_cost_usd': ((list_cost(usage, model) or 0.0)
+                          if all(row.get(usage_key) is not None for row in rows) else None),
+        'usage': usage,
     }
-    if has_per_frame_gemini:
-        select_kwargs['gemini_frame_insight'] = pipeline.keyframes.gemini_frame_insight
-        select_kwargs['gemini_frame_cost'] = pipeline.keyframes.gemini_frame_cost
-    if has_oss_frame:
-        select_kwargs['oss_frame_insight'] = pipeline.keyframes.oss_frame_insight
 
-    frame_df = (
-        pipeline.keyframes.select(**select_kwargs)
-        .order_by(pipeline.keyframes.global_position_ms)
+
+def _orchestrated_stages(run_id: str, synthesis: dict, model: str) -> dict[str, Any]:
+    kf = table('keyframes')
+    frames = (
+        kf.where(kf.run_id == run_id)
+        .select(cost=kf.gemini_caption_cost, usage=kf.gemini_caption_usage, text=kf.gemini_caption,
+                error=kf.gemini_caption_response.errormsg)
         .collect()
-        .to_pandas()
     )
-    if not has_per_frame_gemini:
-        frame_df['gemini_frame_insight'] = ''
-        frame_df['gemini_frame_cost'] = None
-        parent_frames = video_row.get('gemini_frame_context') if video_row is not None else None
-        if isinstance(parent_frames, list) and not frame_df.empty:
-            by_pos = {
-                float(item.get('pos_msec', 0.0)): item
-                for item in parent_frames
-                if isinstance(item, dict)
-            }
-            insights = []
-            costs = []
-            for pos in frame_df['frame_position']:
-                item = by_pos.get(float(pos), {})
-                insights.append(item.get('frame_insight', ''))
-                costs.append(item.get('frame_cost'))
-            frame_df['gemini_frame_insight'] = insights
-            frame_df['gemini_frame_cost'] = costs
-    if not has_oss_frame:
-        frame_df['oss_frame_insight'] = ''
-
-    if not frame_df.empty and video_row is not None:
-        frame_df['native_video_insight'] = video_row.get('native_insight', '')
-        frame_df['gemini_orchestrated_insight'] = video_row.get(
-            'gemini_orchestrated_insight', ''
-        )
-        frame_df['oss_insight'] = video_row.get('oss_insight', '')
-        frame_df['fal_insight'] = video_row.get('fal_insight', '')
-        frame_df['nova_insight'] = video_row.get('nova_insight', '')
-        frame_df['native_cost'] = video_row.get('native_cost', 0.0)
-        frame_df['gemini_orchestrated_cost'] = video_row.get('gemini_orchestrated_total', 0.0)
-        frame_df['oss_cost'] = video_row.get('oss_cost', 0.0)
-        frame_df['fal_cost'] = video_row.get('fal_cost', 0.0)
-        frame_df['nova_cost'] = video_row.get('nova_cost', 0.0)
-        frame_df['cost_delta_native_vs_gemini'] = video_row.get(
-            'cost_delta_native_vs_gemini', 0.0
-        )
-
-    if not summary.empty:
-        row = summary.iloc[-1]
-        frame_count = _frame_count_from_row(row)
-        summary_row = {
-            'frame_position': 'VIDEO_TOTAL',
-            'segment_start': None,
-            'gemini_frame_insight': f'frames={frame_count}',
-            'oss_frame_insight': '',
-            'gemini_frame_cost': None,
-            'native_video_insight': row.get('native_insight', ''),
-            'gemini_orchestrated_insight': row.get('gemini_orchestrated_insight', ''),
-            'oss_insight': row.get('oss_insight', ''),
-            'fal_insight': row.get('fal_insight', ''),
-            'nova_insight': row.get('nova_insight', ''),
-            'native_cost': row.get('native_cost', 0.0),
-            'gemini_orchestrated_cost': row.get('gemini_orchestrated_total', 0.0),
-            'oss_cost': row.get('oss_cost', 0.0),
-            'fal_cost': row.get('fal_cost', 0.0),
-            'nova_cost': row.get('nova_cost', 0.0),
-            'cost_delta_native_vs_gemini': row.get('cost_delta_native_vs_gemini', 0.0),
-        }
-        frame_df = pd.concat([frame_df, pd.DataFrame([summary_row])], ignore_index=True)
-
-    return frame_df
-
-
-def _oss_asr_label(oss_asr: str) -> str:
-    mapping = {
-        'whisperx': 'WhisperX',
-        'whisper': 'Whisper',
-        'gemini': 'Gemini ASR',
+    ac = table('audio_chunks')
+    chunks = (
+        ac.where(ac.run_id == run_id)
+        .select(cost=ac.gemini_asr_cost, usage=ac.gemini_asr_usage, text=ac.gemini_transcript,
+                error=ac.gemini_asr_response.errormsg)
+        .collect()
+    )
+    return {
+        'captions': _stage(list(frames), 'cost', 'usage', model),
+        'asr': _stage(list(chunks), 'cost', 'usage', model),
+        'synthesis': {
+            'calls': 1,
+            'failed_calls': int(bool(synthesis.get('gemini_response__error'))),
+            'unknown_cost_calls': int(synthesis.get('gemini_synthesis_cost') is None),
+            'cost_usd': synthesis.get('gemini_synthesis_cost'),
+            'list_cost_usd': list_cost(synthesis.get('gemini_synthesis_usage'), model),
+            'usage': synthesis.get('gemini_synthesis_usage') or {},
+            'frames_in_evidence': len(synthesis.get('gemini_selected') or []),
+            'images_attached': len(synthesis.get('gemini_attached') or []),
+        },
     }
-    return mapping.get((oss_asr or '').strip().lower(), oss_asr or 'Whisper')
 
 
-def _report_paths(row: pd.Series, config: BenchmarkConfig, paths: set[str] | None) -> set[str]:
-    if paths is not None:
-        return set(paths)
-    active = {'1', '2'}
-    if row.get('oss_insight'):
-        active.add('3')
-    if config.enable_fal or row.get('fal_insight'):
-        active.add('4')
-    if config.enable_nova or row.get('nova_insight'):
-        active.add('5')
-    return active
+def collect_run(run_id: str, plan: PathPlan, config: BenchmarkConfig) -> dict[str, Any]:
+    """Everything the export needs for one run, read back from the catalog.
+
+    `cost_usd` is billed; `list_cost_usd` prices the same tokens without Gemini's
+    implicit-cache discount, which varies between identical runs.
+    """
+    paths = plan.enabled()
+    wanted: dict[str, set[str]] = {'runs': {'query', 'duration_sec'}}
+    calls: dict[str, set[str]] = {'runs': set()}
+    for path in paths:
+        tbl_name, answer, cost, call_cols = PATH_COLUMNS[path]
+        wanted.setdefault(tbl_name, set()).update({answer, cost})
+        calls.setdefault(tbl_name, set()).update((*call_cols, cost))
+        if path in USAGE_COLUMNS:
+            wanted['runs'].add(USAGE_COLUMNS[path][1])
+            calls['runs'].add(USAGE_COLUMNS[path][1])
+    if plan.orchestrated:
+        wanted['syntheses'].update(
+            {
+                'gemini_synthesis_cost',
+                'gemini_synthesis_usage',
+                'gemini_selected',
+                'gemini_attached',
+            }
+        )
+    rows = {name: _row(name, run_id, cols, calls[name]) for name, cols in wanted.items()}
+    out: dict[str, Any] = {
+        'run_id': run_id,
+        'query': rows['runs']['query'],
+        'duration_sec': rows['runs']['duration_sec'],
+        'paths': {},
+    }
+    for path in paths:
+        tbl_name, answer_col, cost_col, call_cols = PATH_COLUMNS[path]
+        row = rows[tbl_name]
+        answer = row.get(answer_col) or ''
+        error_columns = {*call_cols, cost_col}
+        if path in USAGE_COLUMNS:
+            error_columns.add(USAGE_COLUMNS[path][1])
+        entry: dict[str, Any] = {
+            'label': PATH_LABELS[path],
+            'answer': answer,
+            'words': len(answer.split()),
+            'cost_usd': row.get(cost_col),
+            'cost_status': 'known' if row.get(cost_col) is not None else 'unknown',
+            'errors': {c: row[f'{c}__error'] for c in error_columns
+                       if row.get(f'{c}__error')},
+            'scores': score_answer(answer),
+        }
+        entry['list_cost_usd'] = entry['cost_usd']  # no cache discount: fal, Nova, local
+        if path in USAGE_COLUMNS:
+            entry['usage'] = rows['runs'].get(USAGE_COLUMNS[path][1]) or {}
+            if path in {'1', '1L'}:
+                entry['list_cost_usd'] = list_cost(entry['usage'], config.gemini_model)
+        if path == '2':
+            entry['stages'] = _orchestrated_stages(run_id, rows['syntheses'], config.gemini_model)
+            stages = list(entry['stages'].values())
+            if any(s['cost_usd'] is None for s in stages):
+                entry['cost_usd'], entry['cost_status'] = None, 'unknown'
+            entry['list_cost_usd'] = (
+                sum(s['list_cost_usd'] for s in stages)
+                if all(s['list_cost_usd'] is not None for s in stages) else None
+            )
+        entry['response_accounted_cost_usd'] = (
+            sum(stage.get('response_accounted_cost_usd', stage['cost_usd'] or 0.0)
+                for stage in entry['stages'].values())
+            if path == '2' else entry['cost_usd'] or 0.0
+        )
+        out['paths'][path] = entry
+    return out
 
 
-def format_three_way_report(
-    row: pd.Series,
-    config: BenchmarkConfig,
-    paths: set[str] | None = None,
-) -> str:
-    sep = '=' * 64
-    dash = '-' * 64
-    asr_label = _oss_asr_label(config.oss_asr)
-    path3_label = (
-        f'OPEN SOURCE ({config.oss_backend} vision + {asr_label} + local synthesis)'
+def keyframe_rows(run_id: str, plan: PathPlan) -> list[dict[str, Any]]:
+    if not plan.modular:
+        return []
+    kf = table('keyframes')
+    select: dict[str, Any] = {'position_sec': kf.position_sec}
+    if plan.orchestrated:
+        select.update(gemini_caption=kf.gemini_caption, gemini_caption_cost=kf.gemini_caption_cost)
+    if plan.oss:
+        select['oss_caption'] = kf.oss_caption
+    frames = list(
+        kf.where(kf.run_id == run_id).order_by(kf.position_sec).select(**select).collect()
     )
-    vision_cost = float(row.get('gemini_vision_track_cost', 0) or 0)
-    asr_cost = float(row.get('gemini_asr_cost', 0) or 0)
-    synth_cost = float(row.get('gemini_synthesis_cost', 0) or 0)
-    vision_frames = int(row.get('keyframe_count', 0) or _frame_count_from_row(row) or 0)
-    synth_frames = int(row.get('gemini_synthesis_frame_count', 0) or 0)
-    fal_cost = row.get('fal_cost')
-    nova_cost_val = row.get('nova_cost')
-    active = _report_paths(row, config, paths)
+    if plan.orchestrated:
+        syn = table('syntheses')
+        chosen = syn.where(syn.run_id == run_id).select(syn.gemini_selected, syn.gemini_attached)
+        chosen_row = chosen.collect()[0]
+        selected = {f['position_sec'] for f in chosen_row['gemini_selected'] or []}
+        attached = {f['position_sec'] for f in chosen_row['gemini_attached'] or []}
+        for frame in frames:
+            frame['selected'] = frame['position_sec'] in selected
+            frame['image_attached'] = frame['position_sec'] in attached
+    return frames
+
+
+def _money(value: float | None) -> str:
+    return 'unknown' if value is None else f'${value:.4f}'
+
+
+def _tokens(usage: dict | None) -> str:
+    if not usage:
+        return '-'
+    by_modality = usage.get('input_by_modality') or {}
+    modal = ', '.join(f'{m.lower()} {n:,}' for m, n in sorted(by_modality.items()))
+    parts = [f'in {usage.get("input_tokens", 0):,}' + (f' ({modal})' if modal else '')]
+    parts.append(f'out {usage.get("output_tokens", 0):,}')
+    if usage.get('thinking_tokens'):
+        parts.append(f'thinking {usage["thinking_tokens"]:,}')
+    if usage.get('cached_tokens'):
+        parts.append(f'cached {usage["cached_tokens"]:,}')
+    return '; '.join(parts)
+
+
+def format_report(run: dict[str, Any], config: BenchmarkConfig) -> str:
     lines = [
-        sep,
-        f'QUERY: {row.get("query", "")}',
-        dash,
-        'COSTS (heuristic; uses API usage_metadata when available)',
+        f'# Run {run["run_id"]}',
+        '',
+        f'- Query: {run["query"]}',
+        f'- Video duration: {float(run["duration_sec"] or 0):.1f} s',
+        f'- Gemini model: {config.gemini_model}; prices as of {pricing.PRICES_AS_OF}',
+        '',
+        '## Cost',
+        '',
+        'Billed cost includes Gemini implicit-cache discounts; list cost prices the same tokens '
+        'without them.',
+        '',
+        '| Path | Billed | List | Tokens |',
+        '|------|-------:|-----:|--------|',
     ]
-    if '1' in active:
+    for path, entry in run['paths'].items():
         lines.append(
-            f'  native_cost                  ${float(row.get("native_cost", 0) or 0):.3f}'
+            f'| {path} {entry["label"]} | {_money(entry["cost_usd"])} | '
+            f'{_money(entry["list_cost_usd"])} | {_tokens(entry.get("usage"))} |'
         )
-    if '2' in active:
-        lines.extend(
-            [
-                f'  gemini_orchestrated_total    '
-                f'${float(row.get("gemini_orchestrated_total", 0) or 0):.3f}',
-                f'    vision_track               ${vision_cost:.3f}'
-                + (f'  ({vision_frames} API frames)' if vision_frames else ''),
-                f'    asr                        ${asr_cost:.3f}',
-                f'    synthesis                  ${synth_cost:.3f}'
-                + (f'  ({synth_frames} frames in context)' if synth_frames else ''),
+        for stage, info in (entry.get('stages') or {}).items():
+            lost = [
+                f'{info[key]} {word}'
+                for key, word in (('failed_calls', 'failed'), ('empty_outputs', 'empty'))
+                if info.get(key)
             ]
-        )
-    if '3' in active:
-        lines.append(
-            f'  oss_cost                     ${float(row.get("oss_cost", 0) or 0):.3f}'
-        )
-    if '4' in active and fal_cost is not None and not (
-        isinstance(fal_cost, float) and pd.isna(fal_cost)
-    ):
-        lines.append(
-            f'  fal_cost                     ${float(fal_cost or 0):.3f}'
-            '  (input capped at 120s; API max ~122s)'
-        )
-    if '5' in active and nova_cost_val is not None and not (
-        isinstance(nova_cost_val, float) and pd.isna(nova_cost_val)
-    ):
-        lines.append(f'  nova_cost                    ${float(nova_cost_val or 0):.3f}')
-    if {'1', '2'} <= active:
-        lines.append(
-            '  cost_delta_native_vs_gemini  '
-            f'${float(row.get("cost_delta_native_vs_gemini", 0) or 0):.3f}'
-        )
-    if '4' in active and row.get('cost_delta_native_vs_fal') is not None and not pd.isna(
-        row.get('cost_delta_native_vs_fal')
-    ):
-        lines.append(
-            '  cost_delta_native_vs_fal     '
-            f'${float(row.get("cost_delta_native_vs_fal", 0) or 0):.3f}'
-        )
-    if '5' in active and row.get('cost_delta_native_vs_nova') is not None and not pd.isna(
-        row.get('cost_delta_native_vs_nova')
-    ):
-        lines.append(
-            '  cost_delta_native_vs_nova    '
-            f'${float(row.get("cost_delta_native_vs_nova", 0) or 0):.3f}'
-        )
-    lines.append(sep)
-    if '1' in active:
-        lines.extend(
-            [
-                f'PATH 1 — NATIVE GEMINI ({config.gemini_model} on full video)',
-                str(row.get('native_insight', '') or ''),
-                '',
-            ]
-        )
-    if '2' in active:
-        lines.extend(
-            [
-                'PATH 2 — GEMINI ORCHESTRATED '
-                '(keyframes + gemini.transcribe + multimodal synthesis)',
-                str(row.get('gemini_orchestrated_insight', '') or ''),
-                '',
-            ]
-        )
-    if '3' in active:
-        lines.extend(
-            [
-                f'PATH 3 — {path3_label}',
-                str(row.get('oss_insight', '') or ''),
-                '',
-            ]
-        )
-    if '4' in active:
-        lines.extend(
-            [
-                'PATH 4 — NATIVE FAL (fal-ai/video-understanding; input capped at 120s)',
-                str(row.get('fal_insight', '') or '(skipped — set FAL_KEY to enable)'),
-                '',
-            ]
-        )
-    if '5' in active:
-        lines.extend(
-            [
-                f'PATH 5 — NATIVE NOVA ({config.nova_model_id} via Bedrock)',
-                str(row.get('nova_insight', '') or '(skipped — set AWS/Bedrock creds to enable)'),
-                '',
-            ]
-        )
-    if lines[-1] == '':
-        lines.pop()
-    lines.append(sep)
-    return '\n'.join(lines)
+            calls = f'{info["calls"]} call{"s" * (info["calls"] != 1)}' + ''.join(
+                f', {item}' for item in lost
+            )
+            lines.append(
+                f'| &nbsp;&nbsp;{stage} ({calls}) | '
+                f'{_money(info["cost_usd"])} | {_money(info["list_cost_usd"])} | '
+                f'{_tokens(info["usage"])} |'
+            )
+    lines += ['', '## Heuristic scores', '']
+    score_names = list(next(iter(run['paths'].values()))['scores']) if run['paths'] else []
+    lines.append('| Path | words | ' + ' | '.join(score_names) + ' |')
+    lines.append('|------|------:|' + '|'.join(':-:' for _ in score_names) + '|')
+    for path, entry in run['paths'].items():
+        marks = ' | '.join('Y' if entry['scores'][s] else '-' for s in score_names)
+        lines.append(f'| {path} | {entry["words"]} | {marks} |')
+    for path, entry in run['paths'].items():
+        lines += ['', f'## Path {path}: {entry["label"]}', '']
+        for column, message in entry['errors'].items():
+            lines.append(f'> {column} failed: {message}')
+        lines.append(entry['answer'] or '(no answer)')
+    return '\n'.join(lines) + '\n'
 
 
-def print_three_way_comparison(
-    config: BenchmarkConfig,
-    paths: set[str] | None = None,
-) -> None:
-    row = _latest_video_row()
-    if row is None:
-        print('No video_sources rows to compare.')
-        return
-    print(format_three_way_report(row, config, paths=paths))
-
-
-def _git_commit() -> str | None:
+def environment() -> dict[str, Any]:
+    """Provenance recorded in every manifest."""
     try:
-        result = subprocess.run(
+        commit = subprocess.run(
             ['git', 'rev-parse', 'HEAD'],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
             check=True,
-        )
-        return result.stdout.strip()
+        ).stdout.strip()
+        dirty = bool(subprocess.run(
+            ['git', 'status', '--porcelain', '--untracked-files=normal'], cwd=PROJECT_ROOT,
+            capture_output=True, text=True, check=True,
+        ).stdout.strip())
     except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
+        commit = None
+        dirty = None
+    return {
+        'git_commit': commit,
+        'git_dirty': dirty,
+        'source_sha256': provenance.source_identity(),
+        'package_versions': provenance.package_versions(),
+        'python_version': sys.version,
+        'platform': platform.platform(),
+        'pixeltable_version': pxt.__version__,
+    }
 
 
 def export_run(
-    config: BenchmarkConfig,
-    export_dir: Path,
-    video_path: str,
-    query: str,
-    paths: set[str] | None = None,
+    run_id: str, plan: PathPlan, config: BenchmarkConfig, video_path: str, export_dir: Path
 ) -> Path:
-    row = _latest_video_row()
-    if row is None:
-        raise RuntimeError('No results to export')
-
-    ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    out = export_dir / ts
+    run = collect_run(run_id, plan, config)
+    out = export_dir / run_id
     out.mkdir(parents=True, exist_ok=True)
-
-    frame_count = _frame_count_from_row(row)
-    synth_frame_count = _synthesis_frame_count_from_row(row)
-    audio_chunk_count = _audio_chunk_count_from_row(row)
-    # Attach counts so format_three_way_report can annotate cost lines.
-    row = row.copy()
-    row['keyframe_count'] = frame_count
-    row['gemini_synthesis_frame_count'] = synth_frame_count
-
     manifest = {
-        'timestamp_utc': ts,
-        'python_version': sys.version,
-        'platform': platform.platform(),
-        'git_commit': _git_commit(),
+        'run_id': run_id,
+        'exported_utc': f'{datetime.now(timezone.utc):%Y-%m-%dT%H:%M:%SZ}',
+        **environment(),
         'video_path': video_path,
-        'query': query,
+        'video_identity': provenance.media_identity(video_path),
+        'paths': list(run['paths']),
         'config': config_manifest_dict(config),
+        'prices': {
+            'as_of': pricing.PRICES_AS_OF,
+            'sources': pricing.PRICE_SOURCES,
+            'gemini_usd_per_1m': {
+                m: {'input': r.input, 'cached_input': r.cached_input, 'output': r.output}
+                for m, r in pricing.GEMINI_RATES.items()
+            },
+            'nova_usd_per_1m': pricing.NOVA_RATES,
+            'fal_usd_per_5s': pricing.FAL_USD_PER_5_SEC,
+        },
     }
-    active = _report_paths(row, config, paths)
-    summary = {
-        'query': row.get('query', ''),
-        'video_duration_sec': _finite_float(row.get('video_duration_sec', 0)),
-        'keyframe_count': frame_count,
-        'gemini_synthesis_frame_count': synth_frame_count,
-        'audio_chunk_count': audio_chunk_count,
-        'paths': sorted(active),
-        'cost_note': (
-            'Heuristic estimates; native/synthesis/vision use usage_metadata when present. '
-            'fal_cost is $0.01 per 5s on input capped at 120s (API max ~122s); '
-            'nova_cost uses Bedrock token rates (default Nova Pro). '
-            'vision_track sums all vision API frames; synthesis uses the capped frame context. '
-            'Cost keys are included only for the paths selected in this run.'
-        ),
-    }
-    if '1' in active:
-        summary['native_cost'] = _finite_float(row.get('native_cost'))
-    if '2' in active:
-        summary['gemini_orchestrated_total'] = _finite_float(row.get('gemini_orchestrated_total'))
-        summary['gemini_vision_track_cost'] = _finite_float(row.get('gemini_vision_track_cost'))
-        summary['gemini_asr_cost'] = _finite_float(row.get('gemini_asr_cost'))
-        summary['gemini_synthesis_cost'] = _finite_float(row.get('gemini_synthesis_cost'))
-    if '3' in active:
-        summary['oss_cost'] = _finite_float(row.get('oss_cost'))
-    if {'1', '2'} <= active:
-        summary['cost_delta_native_vs_gemini'] = _finite_float(
-            row.get('cost_delta_native_vs_gemini')
-        )
-    if '4' in active:
-        summary['fal_cost'] = _finite_float(row.get('fal_cost'))
-        summary['cost_delta_native_vs_fal'] = _finite_float(row.get('cost_delta_native_vs_fal'))
-    if '5' in active:
-        summary['nova_cost'] = _finite_float(row.get('nova_cost'))
-        summary['cost_delta_native_vs_nova'] = _finite_float(row.get('cost_delta_native_vs_nova'))
-
-    insights = {}
-    if '1' in active:
-        insights['native_insight'] = '' if pd.isna(row.get('native_insight')) else row.get(
-            'native_insight', ''
-        )
-    if '2' in active:
-        insights['gemini_orchestrated_insight'] = (
-            ''
-            if pd.isna(row.get('gemini_orchestrated_insight'))
-            else row.get('gemini_orchestrated_insight', '')
-        )
-    if '3' in active:
-        insights['oss_insight'] = '' if pd.isna(row.get('oss_insight')) else row.get(
-            'oss_insight', ''
-        )
-    if '4' in active:
-        insights['fal_insight'] = '' if pd.isna(row.get('fal_insight')) else row.get(
-            'fal_insight', ''
-        )
-    if '5' in active:
-        insights['nova_insight'] = '' if pd.isna(row.get('nova_insight')) else row.get(
-            'nova_insight', ''
-        )
-
-    (out / 'manifest.json').write_text(json.dumps(manifest, indent=2))
-    (out / 'summary.json').write_text(json.dumps(summary, indent=2))
-    (out / 'insights.json').write_text(json.dumps(insights, indent=2))
-    (out / 'REPORT.md').write_text(format_three_way_report(row, config, paths=paths))
-
-    if pipeline.keyframes is not None:
-        frame_df = build_comparison_dataframe()
-        if not frame_df.empty:
-            frame_df.to_csv(out / 'keyframes.csv', index=False)
-
+    (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    (out / 'summary.json').write_text(json.dumps(run, indent=2, default=str) + '\n')
+    (out / 'REPORT.md').write_text(format_report(run, config))
+    frames = keyframe_rows(run_id, plan)
+    if frames:
+        with (out / 'keyframes.csv').open('w', newline='') as fh:
+            writer = csv.DictWriter(fh, fieldnames=list(frames[0]))
+            writer.writeheader()
+            writer.writerows(frames)
     return out

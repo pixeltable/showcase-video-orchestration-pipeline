@@ -1,54 +1,54 @@
-# Blog draft: Take back control of video understanding
+# Blog draft: we were wrong about the cost of native video
 
-> Status: draft for Pixeltable blog / companion to the paper.  
-> Repo: [pixeltable/showcase-video-orchestration-pipeline](https://github.com/pixeltable/showcase-video-orchestration-pipeline) · Paper: [docs/paper/paper.md](../paper/paper.md) · Pixeltable 0.7.8 TableModel CLI
+> Status: draft for the Pixeltable blog. Companion to [the paper](../paper/paper.md). Numbers come from [docs/paper/numbers.json](../paper/numbers.json).
 
 ## Working title
 
-**Own the stack: why modular video pipelines still beat opaque native APIs on cost—and how Pixeltable makes them reproducible**
+**Native video or keyframes? Count every token before you choose.**
 
 ## Hook
 
-Vendors push “just send the whole video to the model.” That works—until the bill arrives, the API caps you at two minutes, or you cannot see *which* frames drove the answer. Modular orchestration (keyframes + ASR + synthesis) looks old-fashioned until you measure it fairly against the same model.
+Our own benchmark said that sampling keyframes and transcribing audio cost 66% less than sending Gemini the whole video. It was wrong. We had billed every token at one flat price, while Gemini bills video input at $0.30 per million tokens and output, including hidden thinking, at $2.50. Fixing the accounting turned a 66% saving into 18%, and a cheaper native setting beat both.
 
-## Thesis (one paragraph)
+## The story in four beats
 
-On a fixed long-form narrative clip, **same-model Gemini orchestration costs ~66% less than native full-video Gemini** while matching or beating narrative completeness. Pixeltable turns that pipeline into a **declarative catalog**: insert a video, recompute computed columns, export machine-readable costs and answers. You choose native, orchestrated, or fully open-source—without rewriting glue scripts.
+1. **The claim.** Orchestration (captions + transcript + one synthesis call) looked three times cheaper than native video on a four-minute clip.
+2. **The audit.** Every call in the pipeline is a Pixeltable column, including each response's `usage_metadata`. Reading those columns showed video input priced 5x too high, output 40% too low, thinking tokens missing, and one synthesis per run billed twice.
+3. **The fair rerun.** Same model, same question and instructions for every path, costs from reported tokens per modality, a native baseline at low media resolution, six runs per path, 123 Video-MME questions with paired tests.
+4. **The result.** On one question about one clip, native at low resolution is cheapest ($0.0219) and orchestration ($0.0308) saves 18% over default native ($0.0376). On 123 Video-MME questions, three per video, native and orchestration had the same point accuracy (79.7%; low resolution 83.7%), with unresolved differences under video-level paired inference at a quarter of native's list price and half of low resolution's ($0.029, $0.107, and $0.055 per question).
 
-## What readers should feel
+## Why the numbers moved
 
-- **Power:** Frames, transcripts, and synthesis prompts are inspectable stages—not a black box.
-- **Control:** Change frame budget or swap Path 3 to local GGUFs without changing the evaluation harness.
-- **Honesty:** Optional natives (fal, Nova) are baselines with documented caps and failure modes—not co-equal heroes.
+Orchestration does not avoid tokens; it converts them. It swaps video input tokens, the cheapest kind, for generated captions and transcript, billed at the output rate. That trade pays off only when the generated evidence is reused: several questions about one video, or a video long enough that reading it once costs more than describing it.
 
-## Outline
+## What readers should take away
 
-1. **The industry story** — early-fusion NMMs vs production late fusion (link Apple/CVF scaling + roadmap papers).
-2. **The fairness problem** — different models, prompts, and cherry-picked clips make demos incomparable.
-3. **Five paths, one catalog** (4–5 are optional natives)
-   - Path 1: native Gemini video
-   - Path 2: scene-aware keyframes + `gemini.transcribe` + multimodal synth
-   - Path 3: Qwen2.5-VL + WhisperX + Qwen2.5-7B
-4. **Headline result** — Pursuit ~255s: $0.114 vs $0.039; Path 2 hits unpaid-internship / punchline / “tonight”.
-5. **Video-MME sneak peek** — objective MCQ slice: orchestration stays far cheaper per correct; OSS trails; Nova needs S3 for long clips.
-6. **How to try it** — `pip install -e ".[demo]"` → `run-benchmark --paths 1,2 --reset` → open `REPORT.md`.
-7. **Customize** — point to `examples/orchestrated.env` and `examples/oss.env`.
-8. **CTA** — star the repo, read the paper, bring your own video.
+- **Price from usage metadata, per modality.** Text length and flat rates are not cost.
+- **Count thinking tokens.** On our native calls they were 37 to 66% of output-side tokens.
+- **Compare against the cheap native setting.** `media_resolution=LOW` cut native video tokens by 73% with no loss on our clip.
+- **Report list and response-accounted estimates together.** Gemini's implicit cache discounted one of six identical Pursuit runs by 70%, and served 49% of native input tokens when three Video-MME questions shared a video. After cache discounts, returned usage priced native at low resolution at 1.4 times orchestration instead of 1.9.
+- **Expect refusals, and look for silent ones.** Gemini refused native calls on 2 of 41 videos, and withheld one transcript as recitation without raising an error. Orchestration lost a part; native lost the answer.
 
-## Pull quotes (from golden export)
+## How Pixeltable made the errors visible
 
-- Cost: “Path 2 **$0.039** vs Path 1 **$0.114** on the same Gemini model.”
-- Control: “Insert a video into Pixeltable; the computed graph is the experiment.”
-- Caveat: “fal’s 120s cap and $/5s pricing are teaching tools—not free wins.”
+- Each stage is a stored computed column: the caption, the transcript, the exact synthesis request, each response and its usage.
+- The catalog is one declarative graph applied once; a synthesis table inserted after its run replaced a recompute sequence that had billed synthesis twice.
+- Failed calls become per-cell errors; completed Video-MME batches are reused on resume. Interrupted and retried attempts may add spend not present in final-response totals.
 
-## Assets to attach
+## Try it
 
-- Figure: cost bars from `docs/paper/figures/`
-- Screenshot: `docs/showcase.html` three-column excerpt
-- Link: `results/golden/REPORT.md`
+```bash
+pip install -e .
+run-media-demo                         # no keys, no API calls
+# Set GOOGLE_API_KEY before the paid comparison:
+run-benchmark --paths 1,1L,2
+```
+
+Open `results/<run_id>/REPORT.md` for the cost of every call.
 
 ## What not to say
 
-- Do not claim Video-MME full 900V is done.
-- Do not present Nova Video-MME numbers without the Bedrock ValidationException caveat.
-- Do not lead with fal or tune-ab lab history.
+- Do not say orchestration is cheaper in general; say when it is.
+- Do not say the paths are equally accurate; 123 questions cannot resolve a gap under about ten points, and low resolution led on long videos.
+- Label both prices as response-accounted estimates; list missing/retried attempts and compute/storage/egress exclusions.
+- Do not present the local open-source path as measured; it was not run for this paper.

@@ -1,0 +1,137 @@
+{
+  "run_id": "20260928T165847Z-b804f0",
+  "query": "Summarize the main activities, speakers, and visual events in this video.",
+  "duration_sec": 254.96,
+  "paths": {
+    "1": {
+      "label": "Native Gemini (full video)",
+      "answer": "The video opens with the title \"The Pursuit of Happyness\" shown on screen while Chris Gardner (Will Smith) is seen looking weary and slightly disheveled in a bustling office environment. The sound of office chatter is present, and the video's volume changes slightly.\n\nA shot transitions to a formal boardroom where several men in suits are seated around a large table. Chris then enters the boardroom, led by a smiling woman. He shakes hands with the men, introducing himself: **Chris Gardner**: \"Chris Gardner.\" He repeats his name to a few individuals.\n\nChris sits down at the table, facing the interviewers, and immediately addresses his appearance: **Chris Gardner**: \"I've been sitting out there for the last half hour trying to come up with a story that would explain my being here dressed... like this. And... And I wanted to come up with a story that would demonstrate qualities that I'm sure you all admire here, like... like earnestness or diligence. And team-playing. Something. And I couldn't think... of anything. So the truth is... I was arrested for failure to pay parking tickets.\"\n\nOne of the interviewers, **Suit Man 1 (Jay)**, looks surprised and asks: **Jay**: \"Parking tickets?\" Another interviewer, **Suit Man 2**, exclaims \"What?\" with a slight laugh. Chris explains he \"ran all the way here from the... The Polk Station, the police station.\"\n\nSuit Man 2 asks: **Suit Man 2**: \"What were you doing before you were arrested?\" Chris replies: **Chris Gardner**: \"I was, uh... painting my apartment.\" Suit Man 2 then asks humorously: **Suit Man 2**: \"Is it dry now?\" Chris smiles: **Chris Gardner**: \"Uh. I hope so.\"\n\nJay interjects, referencing another colleague: **Jay**: \"Jay says you're pretty determined.\" Suit Man 1, now identified as Jay, adds: **Jay**: \"Oh, he's been waiting outside the front of the building with some 40-pound gizmo for over a month.\" Jay then compliments Chris: **Jay**: \"He said you're smart.\" Chris responds: **Chris Gardner**: \"Well, I like to think so.\" Jay continues: **Jay**: \"And you want to learn this business?\" **Chris Gardner**: \"Yes, sir, I want to learn this business.\" Jay probes further: **Jay**: \"Have you already started learning on your own?\" **Chris Gardner**: \"Absolutely.\"\n\nJay turns to his colleague again: **Jay**: \"Jay?\" The colleague responds \"Yes, sir.\" Jay asks: **Jay**: \"How many times have you seen Chris?\" The colleague replies: **Colleague**: \"Yeah, I don't know. One too many, apparently.\" Jay asks about Chris's attire in previous encounters: **Jay**: \"Was he ever dressed like this?\" **Colleague**: \"No. No. Jacket and tie.\"\n\nJay reviews Chris's resume: **Jay**: \"First in your class in school? High school?\" **Chris Gardner**: \"Yes, sir.\" **Jay**: \"How many in the class?\" **Chris Gardner**: \"Uh, 12.\" He adds, \"It was a small town.\" Jay sarcastically says, \"I'll say.\" Chris then quickly adds: **Chris Gardner**: \"But I was also first in my radar class in... In the Navy, and that was a class of 20.\"\n\nChris then states his approach to problem-solving: **Chris Gardner**: \"Can I say something? Um... Um... I'm the type of person, if you ask me a question, and I don't know the answer, I'm gonna tell you that I don't know. But I bet you what. I know how to find the answer. And I will find the answer. Is that fair enough?\"\n\nJay poses a challenging hypothetical: **Jay**: \"Chris... What would you say if a guy walked in for an interview without a shirt on, and I hired him? What would you say?\" Chris pauses, then smiles brightly as he delivers his witty response: **Chris Gardner**: \"He must've had on some really nice pants.\" The interviewers burst into laughter, clearly impressed by his quick thinking and charm.\n\nThe scene shifts to Chris pressing an elevator button, looking worried. Jay approaches him from the office: **Jay**: \"Chris... I don't know how you did it dressed as a garbage man, but you really pulled it off in there.\" Chris replies, shaking Jay's hand: **Chris Gardner**: \"Thank you very much, Mr. Twistle.\" Jay corrects him: **Jay**: \"Hey, now you can call me Jay. We'll talk to you soon.\"\n\nChris responds, still seeming to misunderstand: **Chris Gardner**: \"All right, so I'll let you know, Jay.\" Jay looks confused and slightly annoyed: **Jay**: \"You'll... 'You'll let me know, Jay'? What do you mean?\" Chris tries to explain: **Chris Gardner**: \"Yeah, I'll give you a call tomorrow sometime... \" Jay cuts him off, visibly frustrated: **Jay**: \"What are you talking...? You hounded me for this. You stood here...\" Chris interrupts, clarifying his hesitation: **Chris Gardner**: \"Listen. There's no salary. No. I was not aware of that. My circumstances have changed some, and I need to be certain that I'll be able to sustain...\" Jay, now more emphatic, interrupts him again with a nod: **Jay**: \"All right. Okay.\"\n\nJay pauses for a moment, then says firmly: **Jay**: \"Tonight.\" He continues, making the job offer clear and with a warning: **Jay**: \"I swear, I will fill your spot. I promise. If you back out, you know what I'll look like to the partners?\" **Chris Gardner**: \"Yes. An ass...\" (the word is bleeped out). Jay finishes his thought, smiling and laughing: **Jay**: \"Yeah, an ass A***e, all the way.\" He chuckles again, pointing at Chris: **Jay**: \"You are a piece of work. Tonight.\" Chris smiles back, now understanding he has the job.\n\nThe video concludes with a \"Binge Society\" logo and social media links.",
+      "words": 897,
+      "cost_usd": 0.038109699999999996,
+      "errors": {},
+      "scores": {
+        "nice_pants": true,
+        "jay": true,
+        "chris": true,
+        "salary": true,
+        "tonight": true,
+        "complete": true,
+        "truncated": false,
+        "sections": false,
+        "no_spam": true
+      },
+      "usage": {
+        "input_tokens": 75284,
+        "cached_tokens": 0,
+        "output_tokens": 1340,
+        "thinking_tokens": 2585,
+        "input_by_modality": {
+          "TEXT": 59,
+          "AUDIO": 8160,
+          "VIDEO": 67065
+        },
+        "cached_by_modality": {}
+      }
+    },
+    "1L": {
+      "label": "Native Gemini, low media resolution",
+      "answer": "The video features a job interview scene from the movie \"The Pursuit of Happyness,\" showcasing Chris Gardner's (Will Smith) determination and wit despite being disheveled.\n\nThe main activities include:\n- Chris Gardner rushing into an office for a job interview.\n- The interview itself, where Chris answers questions about his appearance, past, and qualifications.\n- A humorous exchange regarding a hypothetical interview scenario.\n- A follow-up conversation between Chris and Jay in the hallway about the job's terms.\n\nHere's a detailed breakdown:\n\n- **0:00-0:05**: The video opens with **Chris Gardner (Will Smith)**, looking tired and disheveled, with some white paint marks on his face and clothing, running through a busy office environment.\n- **0:05-0:10**: The scene cuts to a large, bright conference room where four well-dressed men, including **Jay (Mr. Twistle)**, are seated at a table. Chris then walks into the room.\n- **0:10-0:15**: A woman, **unidentified**, greets Chris.\n- **0:15-0:28**: Chris enters the room, still looking sweaty and with paint on his face. He walks around the table, shaking hands with the interviewers.\n    - **Woman**: \"Chris Gardner.\"\n    - **Chris Gardner**: \"Chris Gardner. How are you? Good morning. Chris Gardner. Good to see you again. Chris Gardner, pleasure.\"\n- **0:28-0:51**: Chris sits down and explains his appearance, gesturing expressively.\n    - **Chris Gardner**: \"I've been sitting out there for the last half hour trying to come up with a story that would explain my being here dressed... like this. And and I wanted to come up with a story that would demonstrate qualities that I'm sure you all admire here, like like earnestness or diligence. And team-playing. Something. And I couldn't think of anything.\"\n- **0:51-1:12**: Chris reveals the truth about his appearance.\n    - **Chris Gardner**: \"So the truth is... I was arrested for failure to pay parking tickets.\"\n    - **Jay (Interviewer 1)**: \"Parking tickets? What?\"\n    - **Chris Gardner**: \"And I ran all the way here from the... the Polk Station, the police station.\"\n    - **Interviewer 2 (older man in glasses and tie)**: \"What were you doing before you were arrested?\"\n    - **Chris Gardner**: \"I was, uh, painting my apartment.\"\n    - **Interviewer 2**: \"Is it dry now?\"\n    - **Chris Gardner**: \"Uh, I hope so.\"\n- **1:12-1:29**: The interviewers discuss Chris's determination.\n    - **Interviewer 2**: \"Jay says you're pretty determined.\"\n    - **Jay**: \"Oh, he's been waiting outside the front of the building with some 40-pound gizmo for over a month.\"\n    - **Interviewer 2**: \"He said you're smart.\"\n    - **Chris Gardner**: \"I like to think so.\"\n    - **Interviewer 2**: \"And you want to learn this business?\"\n    - **Chris Gardner**: \"Yes, sir, I want to learn this business.\"\n    - **Interviewer 2**: \"Have you already started learning on your own?\"\n    - **Chris Gardner**: \"Absolutely.\"\n- **1:29-2:04**: The interviewers question Chris about his academic background and previous experiences.\n    - **Interviewer 2**: \"Jay?\"\n    - **Jay**: \"Yes, sir.\"\n    - **Interviewer 2**: \"How many times have you seen Chris?\"\n    - **Jay**: \"Yeah, I don't know. One too many, apparently.\"\n    - **Interviewer 2**: \"Was he ever dressed like this?\"\n    - **Chris Gardner**: \"No. No. Jacket and tie.\"\n    - **Interviewer 2**: \"First in your class in school? High school?\"\n    - **Chris Gardner**: \"Yes, sir.\"\n    - **Interviewer 2**: \"How many in the class?\"\n    - **Chris Gardner**: \"Uh, 12. It was a small town.\"\n    - **Interviewer 2**: \"I'll say.\"\n    - **Chris Gardner**: \"But I was also first in my radar class in... in the Navy, and that was a class of 20.\"\n- **2:04-2:26**: Chris articulates his approach to problem-solving.\n    - **Chris Gardner**: \"Can I say something? Um, um... I'm the type of person... if you ask me a question, and I don't know the answer, I'm gonna tell you that I don't know. But I bet you what. I know how to find the answer. And I will find the answer. Is that fair enough?\"\n- **2:26-2:56**: Interviewer 2 poses a hypothetical question, and Chris gives a witty answer, leading to laughter from the panel.\n    - **Interviewer 2**: \"Chris. Well, what would you say if a guy walked in for an interview without a shirt on? And I hired him. What would you say?\"\n    - **Chris Gardner**: \"He must've had on some really nice pants.\"\n    - The interviewers erupt in laughter, especially Interviewer 2, who leans back in his chair with a wide smile.\n- **2:56-3:15**: Chris is seen in an elevator lobby, pressing the button. **Jay** exits the conference room and speaks to him.\n    - **Jay**: \"Chris... I don't know how you did it dressed as a garbage man, but you really pulled it off in there.\"\n    - **Chris Gardner**: \"Thank you very much, Mr. Twistle.\"\n    - **Jay**: \"Hey, now you can call me Jay. We'll talk to you soon.\"\n    - **Chris Gardner**: \"All right, so I'll let you know, Jay.\"\n    - **Jay**: \"You'll... 'You'll let me know, Jay'? What do you mean?\"\n- **3:15-3:57**: Chris and Jay discuss the job's terms, revealing it's unpaid, which surprises Chris. Jay then emphasizes the importance of Chris's commitment.\n    - **Chris Gardner**: \"Yeah, I'll give you a call tomorrow sometime...\"\n    - **Jay**: \"What are you talking about? You hounded me for this. You stood here...\"\n    - **Chris Gardner**: \"Listen, there's no salary.\"\n    - **Jay**: \"No.\"\n    - **Chris Gardner**: \"I was not aware of that. My circumstances have changed some, and I need to be certain that I'll be able to sustain...\"\n    - **Jay**: \"All right. Okay. Tonight. I swear, I will fill your spot. I promise. If you back out, you know what I'll look like to the partners?\"\n    - **Chris Gardner**: \"Yes. An ass...\"\n    - **Jay**: \"Yeah, an ass... all the way.\"\n    - **Jay (after Chris gives him a serious look)**: \"You are a piece of work.\"\n    - **Jay (pointing at Chris as he walks away)**: \"Tonight.\"\n- **3:57-4:16**: The video concludes with a \"Binge Society\" end screen, showing options to subscribe and watch other videos.",
+      "words": 973,
+      "cost_usd": 0.0212117,
+      "errors": {},
+      "scores": {
+        "nice_pants": true,
+        "jay": true,
+        "chris": true,
+        "salary": true,
+        "tonight": true,
+        "complete": true,
+        "truncated": false,
+        "sections": false,
+        "no_spam": true
+      },
+      "usage": {
+        "input_tokens": 26324,
+        "cached_tokens": 0,
+        "output_tokens": 1683,
+        "thinking_tokens": 1358,
+        "input_by_modality": {
+          "TEXT": 59,
+          "AUDIO": 8160,
+          "VIDEO": 18105
+        },
+        "cached_by_modality": {}
+      }
+    },
+    "2": {
+      "label": "Orchestrated Gemini (keyframes + ASR + synthesis)",
+      "answer": "The video opens with Chris Gardner, portrayed by Will Smith, appearing sweaty and disheveled in an office setting, with a concerned expression as he moves through the bustling environment. He enters a formal meeting room with large windows overlooking a city skyline, where several men in suits are seated at a conference table, waiting to interview him.\n\nAs the interview begins, Chris Gardner explains his unusual attire to the panel of interviewers. He confesses, \"I've been sitting out there for the last half hour trying to come up with a story that would explain my being here dressed like this... So the truth is, I was arrested for failure to pay parking tickets.\" An interviewer, an older man with white hair, reacts with surprise, repeating, \"Parking tickets.\" Chris clarifies that he \"ran all the way here from the Polk station, the police station.\" The interviewer asks what he was doing before his arrest, to which Chris replies, \"I was uh painting my apartment.\"\n\nThe older interviewer notes that \"Jay says you're pretty determined,\" and Chris explains that Jay \"has been waiting outside the front of the building with some 40-lb gizmo for over a month.\" The interviewer also mentions Jay's comment that Chris is \"smart,\" to which Chris humbly responds, \"I like to think so.\" Chris expresses his strong desire to learn the business. When asked if he has ever dressed so casually for an interview before, Chris confirms he has not, usually wearing a \"Jacket and tie.\" The conversation touches on his academic achievements, including being first in his high school class of 12 and first in his Navy radar class of 20.\n\nChris then offers a candid insight into his character, stating, \"I'm the type of person, if you ask me a question and I don't know the answer. I'm going to tell you that I don't know. But I bet you what, I know how to find the answer and I will find the answer.\" This is followed by a clever exchange. The interviewer, smiling, poses a hypothetical: \"What would you say if a guy walked in for an interview without a shirt on? And I hired him, what would you say?\" Chris, with a smirk, quickly replies, \"He must have had on some really nice pants.\" This witty response elicits laughter from the interviewers.\n\nAfter the interview, Chris speaks with Jay, the man in the pinstriped suit who was part of the panel. Jay congratulates him, saying, \"Chris, I don't know how you did it dressed as a garbage man, but you really pulled it off in there.\" Chris thanks him, addressing him as \"Mr. Twistle,\" to which Jay corrects him, \"Hey, now you can call me Jay.\" Chris then learns there's no salary for the position, which was unexpected, causing him to hesitate and express concern about his changed circumstances. However, he quickly commits, promising, \"Tonight, I swear, I will fill your spot. I promise.\" Jay, visibly amused and impressed, calls Chris \"a piece of work.\" The video then transitions to an outro screen for \"BINGE SOCIETY.\"",
+      "words": 512,
+      "cost_usd": 0.0310793,
+      "errors": {},
+      "scores": {
+        "nice_pants": true,
+        "jay": true,
+        "chris": true,
+        "salary": true,
+        "tonight": true,
+        "complete": true,
+        "truncated": false,
+        "sections": false,
+        "no_spam": true
+      },
+      "stages": {
+        "captions": {
+          "calls": 24,
+          "failed_calls": 0,
+          "cost_usd": 0.0112742,
+          "usage": {
+            "input_tokens": 8414,
+            "cached_tokens": 0,
+            "output_tokens": 3500,
+            "thinking_tokens": 0,
+            "input_by_modality": {
+              "TEXT": 2222,
+              "IMAGE": 6192
+            },
+            "cached_by_modality": {}
+          }
+        },
+        "asr": {
+          "calls": 1,
+          "failed_calls": 0,
+          "cost_usd": 0.0121915,
+          "usage": {
+            "input_tokens": 8209,
+            "cached_tokens": 0,
+            "output_tokens": 1607,
+            "thinking_tokens": 0,
+            "input_by_modality": {
+              "TEXT": 50,
+              "AUDIO": 8159
+            },
+            "cached_by_modality": {}
+          }
+        },
+        "synthesis": {
+          "calls": 1,
+          "failed_calls": 0,
+          "cost_usd": 0.007613600000000001,
+          "usage": {
+            "input_tokens": 6487,
+            "cached_tokens": 0,
+            "output_tokens": 655,
+            "thinking_tokens": 1612,
+            "input_by_modality": {
+              "TEXT": 4423,
+              "IMAGE": 2064
+            },
+            "cached_by_modality": {}
+          },
+          "frames_in_evidence": 16,
+          "images_attached": 8
+        }
+      }
+    }
+  }
+}

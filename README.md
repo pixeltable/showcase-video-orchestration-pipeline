@@ -1,155 +1,162 @@
-# Pixeltable showcase: video orchestration pipeline
+# Own your video pipeline with Pixeltable
 
 [![CI](https://github.com/pixeltable/showcase-video-orchestration-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/pixeltable/showcase-video-orchestration-pipeline/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
-Five-path **CLI** (`run-benchmark` / `run-videomme-dev`) on Pixeltable **0.7.8 `TableModel` + `update_all()`**. Catalogs: `video_benchmarking/` (Pursuit) and `videomme/`. This is a batch benchmark, not a FastAPI / `pxt service` app.
+Keep your media, intermediate results, provider responses, and business logic in a [Pixeltable](https://github.com/pixeltable/pixeltable) catalog. Declare video-to-frame and video-to-audio transformations with the SDK, add model calls as computed columns, and inspect or reuse the evidence with ordinary queries.
 
-Native multimodal APIs process a whole video in one opaque call. Modular pipelines—keyframes, ASR, synthesis—let you **inspect, budget, and swap** every stage. Same clip, same question.
+This repository demonstrates that architecture with a measurable question: answer a video question by sending the whole video to Gemini (**native**), or by captioning keyframes, transcribing audio, and answering from saved evidence (**orchestrated**). The same Gemini model writes both answers. Alternative local models, fal, and Bedrock make the provider boundaries visible.
 
-| | Path 1 Native Gemini | Path 2 Orchestrated Gemini | Path 3 Open source | Path 4 fal | Path 5 Nova |
-|--|----------------------|----------------------------|--------------------|------------|-------------|
-| Idea | Full video → one API call | Sparse frames + ASR → multimodal synth | Local VLM + WhisperX + 7B | `fal-ai/video-understanding` | Bedrock `converse` |
-| Control | Low | High | Full (offline) | Low (120s cap) | Low |
-| Typical cost (Pursuit ~255s) | ~$0.11 | ~$0.039 (~66% less) | $0 API | $0.24 | $0.060 |
+**Validated SDK:** Pixeltable **0.7.15**, the latest stable PyPI release checked on 2026-10-08. The committed experiments used 0.7.11; upgrading the application does not turn those recordings into new experiments.
 
-Paths 1 and 2 use the **same** `gemini-2.5-flash` model. Paths 4–5 are optional provider baselines.
+**Paper:** [docs/paper/paper.md](docs/paper/paper.md) · **Showcase:** [docs/showcase.html](docs/showcase.html) · **Golden run:** [results/golden/](results/golden/) · **How it works:** [docs/WORKFLOW.md](docs/WORKFLOW.md)
 
-**Paper:** [docs/paper/paper.md](docs/paper/paper.md) (PDF: `./scripts/build_paper.sh`)  
-**Blog draft:** [docs/blog/DRAFT.md](docs/blog/DRAFT.md)  
-**Golden export:** [results/golden/](results/golden/) (`fair_v1_nova_pro`)  
-**Static side-by-side:** [docs/showcase.html](docs/showcase.html)  
-**Lab notes:** [docs/LAB_RESULTS.md](docs/LAB_RESULTS.md)
-
----
-
-## Quick start (Paths 1 + 2)
+## Try the media graph without keys
 
 ```bash
 git clone https://github.com/pixeltable/showcase-video-orchestration-pipeline
 cd showcase-video-orchestration-pipeline
 python3.12 -m venv .venv && source .venv/bin/activate
-pip install -e ".[demo]"   # alias for the base Gemini install
+pip install -e .
+run-media-demo
+```
+
+This generates a four-second clip, applies a real `TableModel` graph, and inserts one video row. Pixeltable extracts audio, emits four timestamped frames, resizes their thumbnails, and splits the audio into segments. It prints the results and removes its temporary catalog. No download, credentials, or model call is needed. Read the complete example in [`local_demo.py`](src/video_benchmark/local_demo.py).
+
+## What you control
+
+| Concern | Where it lives |
+|---------|----------------|
+| Media and intermediate data | Typed `Video`, `Image`, and `Audio` columns, iterator views, stored JSON responses |
+| Transformations and business rules | Declared computed columns; frame selection and evidence formatting in [`evidence.py`](src/video_benchmark/evidence.py) |
+| Model and API choices | Provider expressions in the graph; adapters for capabilities the built-ins do not expose |
+| Reuse | Video-MME prepares captions and transcripts once per video and queries them for every question |
+| Failures | Per-cell errors, a bounded retry for transient failures, and explicit empty-output counts |
+| Experiment identity | Definition digest, source and media hashes, package versions, and pinned annotation revision |
+
+The full graph is in [`schema.py`](src/video_benchmark/schema.py). Importing it declares functions; applying the models creates the catalog. The runner inserts source rows before synthesis rows so query-backed evidence is ready. See [workflow and extension points](docs/WORKFLOW.md) and the [in-depth review](docs/REVIEW.md).
+
+## Results
+
+On a 255-second interview clip (mean of six runs, list price, `gemini-2.5-flash` rates of 2026-09-28):
+
+| Path | What the model sees | Cost per answer | Clip phrase checks |
+|------|---------------------|----------------:|----------------------:|
+| 1 Native | the whole video | $0.0376 | 5/5 |
+| 1L Native, low media resolution | the whole video, 71 instead of 263 tokens per second | $0.0219 | 5/5 |
+| 2 Orchestrated | 24 keyframe captions, a transcript, 8 keyframe images | $0.0308 | 5/5 |
+| 4 fal video-understanding | the first 120 seconds | $0.2400 | 2/5 |
+| 5 Amazon Nova Pro | the whole video | $0.0600 | 1/5 |
+
+On 123 Video-MME questions (41 videos, 12.2 hours, three questions per video):
+
+| Path | Accuracy [95% CI] | List price per question | Response-accounted per question |
+|------|------------------:|------------------------:|--------------------:|
+| 1 Native | 79.7% [70.7, 87.8] | $0.107 | $0.061 |
+| 1L Native, low media resolution | 83.7% [74.8, 91.1] | $0.055 | $0.040 |
+| 2 Orchestrated | 79.7% [71.5, 87.0] | $0.029 | $0.028 |
+| 5 Amazon Nova Lite | 58.5% [50.4, 66.7] | $0.010 | $0.010 |
+
+Intervals resample whole videos; paired video-level tests do not resolve the Gemini differences on this sample (p >= 0.27). That does not establish equivalent accuracy. The sample comprises locally available Video-MME videos, and the five clip checks above are phrase heuristics, not a general quality score. Gemini refused both native settings on 2 of the 41 videos; the orchestrated path returned an answer for every question. Exports: [results/paper/](results/paper/).
+
+“Billed” in historical exports means **response-accounted cost estimated from token usage after cache discounts**, not a reconciled invoice. Retried or interrupted calls without stored usage, provider refusals, local compute, storage, and egress can add unrecorded spend. Prices are a dated snapshot; see [cost boundaries](docs/WORKFLOW.md#cost-accounting).
+
+Orchestration replaces video input tokens ($0.30 per million) with generated captions and transcript ($2.50 per million), so on a single question it saves little. It pays off when several questions reuse the same evidence, and Gemini's implicit cache gives native calls part of that reuse.
+
+> **Correction.** An earlier version of this repository reported that orchestration cost 66% less than native ($0.039 vs $0.114). That figure came from a flat $1.50 per million token price, which overcharged video input fivefold, and from uncounted thinking tokens. Section 3 of the paper lists every correction.
+
+## Run the provider comparison (Paths 1, 1L, 2)
+
+```bash
 cp .env.example .env       # set GOOGLE_API_KEY
-python scripts/download_sample.py
-
-run-benchmark --paths 1,2 --reset
+run-benchmark --paths 1,1L,2
 ```
 
-Use **`--reset`** whenever you change `--paths` or the schema. Path-gated `TableModel` columns are not migrated in place.
+After the base installation above, this downloads the sample clip, builds the `video_benchmarking` catalog, and writes `results/<run_id>/`: `REPORT.md`, `summary.json` (answers, usage, and response-accounted cost), `keyframes.csv`, and `manifest.json` (config, prices, versions, source and media identities). The recorded default comparison was about $0.09 at the documented rates; new runs make paid API calls and their cost can vary.
 
-Read `results/<timestamp>/REPORT.md`. Path 1-only exports skip `keyframes.csv`.
+## Paths
 
----
-
-## Other recipes
-
-**Native only**
+| Path | Mechanism | Install |
+|------|-----------|---------|
+| `1` | `gemini.generate_content` on the video and the question | base |
+| `1L` | Path 1 with `media_resolution=LOW` | base |
+| `2` | Gemini caption per keyframe, Gemini transcript, scene-aware frame selection, one multimodal synthesis call | base |
+| `3` | The same keyframes captioned by Qwen2.5-VL-3B, WhisperX transcript, Qwen2.5-7B synthesis, all local | `.[oss]` + `llama-cpp-python` |
+| `4` | `fal.run` on `fal-ai/video-understanding` (first 120 s) | `.[fal]`, `FAL_KEY` |
+| `5` | `bedrock.converse` with Amazon Nova; video that is not H.264 or exceeds the inline limit is re-encoded to the frames Nova samples | `.[bedrock]`, AWS credentials, `ffmpeg` |
 
 ```bash
-run-benchmark --paths 1 --reset
+run-benchmark --paths 1,2 --video my_clip.mp4 --query "What happens after the meeting?"
+run-benchmark --paths 1,1L,2 --repeats 5          # five independent runs
+run-benchmark --paths 3 --reset                   # a catalog is built for one path set
 ```
 
-**Orchestrated only** — optional: `cp examples/orchestrated.env .env`
+A benchmark catalog freezes paths, configuration, computation-source digest, and SDK version. Changing these asks for `--reset`, which drops that benchmark catalog but keeps `results/`. Export runs before resetting. This is an experiment isolation policy; applications can instead use Pixeltable schema migration and selective recomputation.
 
-```bash
-run-benchmark --paths 2 --reset
-```
-
-**Open source**
-
-```bash
-pip install -e ".[oss]"       # whisperx; install llama-cpp-python separately
-cp examples/oss.env .env      # HF_TOKEN for WhisperX diarization
-run-benchmark --paths 3 --reset
-```
-
-**Gemini A/B + OSS**
-
-```bash
-run-benchmark --paths 1,2,3 --reset
-```
-
-**Optional Path 4 / Path 5**
-
-```bash
-pip install -e ".[fal]"       # ENABLE_FAL=1 and FAL_KEY
-run-benchmark --paths 4 --reset
-
-pip install -e ".[bedrock]"   # ENABLE_NOVA=1 and AWS/Bedrock creds
-run-benchmark --paths 5 --reset   # Pursuit default: Nova Pro
-```
-
----
-
-## Showcase excerpt (golden run)
-
-From [results/golden/summary.json](results/golden/summary.json) on the *Pursuit of Happyness* interview clip (~255s):
-
-| Path | Cost |
-|------|------|
-| Native Gemini | **$0.114** |
-| Orchestrated Gemini | **$0.039** |
-| OSS | $0 |
-| fal (120s cap) | $0.24 |
-| Nova Pro | $0.060 |
-
-Path 2 recovers the late unpaid-internship / “tonight” beats — [results/golden/REPORT.md](results/golden/REPORT.md).
-
----
-
-## Optional: Video-MME (quantitative)
-
-Stratified 30-Q MCQ eval. Default paths are **1,2** (same as Pursuit). Path 3 uses **shared Gemini ASR** (paid) plus local VLM captions (not WhisperX). Wrapper / unset `NOVA_MODEL_ID` prefers Nova **Lite**; Pursuit Path 5 defaults to **Pro**. Video-MME raises sample/select to **32 / 24** even when `.env` sets the Pursuit 24/16 knobs. Override with `VIDEOME_VISION_SAMPLE_KEYFRAMES` and `VIDEOME_FRAME_SELECT_BUDGET`. Architecture: [docs/WORKFLOW.md](docs/WORKFLOW.md).
+## Video-MME
 
 ```bash
 pip install -e ".[videomme]"
-run-videomme-dev --paths 1,2 --reset
+run-videomme --n 30 --paths 1,1L,2          # stratified sample; downloads videos with yt-dlp
+run-videomme --local-only --n 123 --paths 1,1L,2,5
 ```
 
-Exports land in local `results/videomme-dev/` (gitignored). Numbers: [docs/LAB_RESULTS.md](docs/LAB_RESULTS.md) and [docs/paper/paper.md](docs/paper/paper.md).
+Questions share their video's captions and transcript, so orchestration prepares evidence once per video. `run-videomme` inserts only missing rows: completed inserts survive an interrupted run and rerunning the same sample makes no additional calls. Persisted failures need explicit recomputation; see [failure recovery](docs/WORKFLOW.md#failures-and-changes). Exports include accuracy and difference intervals clustered by video, paired video-level tests, costs, predictions, and evidence records with media hashes. Annotation revision is pinned in [`sample.py`](src/video_benchmark/videomme/sample.py).
 
----
+## Knobs
 
-## Customize (intentional knobs)
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Model for Paths 1, 1L, 2; must have a price in [`pricing.py`](src/video_benchmark/pricing.py) |
+| `VISION_SAMPLE_KEYFRAMES` | 24 | Frames sampled evenly for captions |
+| `FRAME_SELECT_BUDGET` | 16 | Frames kept for synthesis, nearest to scene cuts and spread over the timeline |
+| `GEMINI_SYNTH_MAX_IMAGES` | 8 | Kept frames attached as images to the synthesis call |
+| `OSS_ASR` | `whisperx` | Path 3 transcript: `whisperx` (needs `HF_TOKEN`), `whisper`, or `gemini` |
+| `NOVA_MODEL_ID` | `amazon.nova-pro-v1:0` | Path 5 model (Video-MME defaults to Nova Lite) |
 
-| Knob | Default | Effect |
-|------|---------|--------|
-| `VISION_SAMPLE_KEYFRAMES` | 24 | Even samples (`num_frames`); unused when scene-aware is off and `MAX_VISION_KEYFRAMES` is set |
-| `FRAME_SELECT_BUDGET` | 16 | Keep frames near scene cuts |
-| `GEMINI_SYNTH_MAX_IMAGES` | 8 | Images re-attached at Path 2 synth |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Paths 1–2 |
-| `OSS_*` / `OSS_ASR` | see examples | Path 3 models / ASR |
-| Prompts | `udfs.py`, `videomme/prompts.py` | Frame + synthesis wording |
+Prompts live in [`prompts.py`](src/video_benchmark/prompts.py) and [`videomme/prompts.py`](src/video_benchmark/videomme/prompts.py); every path that writes an answer shares the same question and guidance.
 
-Inspect the catalog with `pxt ls` / `pxt rows`. Operator detail: [docs/WORKFLOW.md](docs/WORKFLOW.md). The notebook is power-user only and assumes a modular catalog.
+## Inspect a run
 
----
-
-## Project layout
-
-```
-src/video_benchmark/     # Pursuit catalog + CLI (schema.py = TableModel)
-  videomme/              # optional Video-MME eval
-docs/paper/              # research write-up
-docs/showcase.html       # static Path 1–3 cards; 4–5 live in golden REPORT
-examples/                # recipe .env files
-results/golden/          # committed headline export
+```bash
+pxt ls video_benchmarking
+pxt rows video_benchmarking/keyframes -n 5 --cols position_sec,gemini_caption,gemini_caption_cost
+pxt rows video_benchmarking/syntheses -n 1 --cols gemini_prompt,gemini_answer,gemini_total_cost
 ```
 
----
+[`notebooks/pipeline_analytics.ipynb`](notebooks/pipeline_analytics.ipynb) walks one run through every stage (`./scripts/notebook.sh`). Run it while no benchmark is running: a new Pixeltable process clears the catalog's temporary files.
+
+## Layout
+
+```
+src/video_benchmark/
+  schema.py        Pursuit catalog: runs, keyframes, audio_chunks, syntheses
+  pricing.py       rates and cost from usage metadata
+  prompts.py       shared answer instructions
+  evidence.py      transcript parsing, frame selection, synthesis request
+  providers.py     calls Pixeltable does not wrap as needed (transcript with usage, fal upload)
+  oss.py           Path 3 local models
+  videomme/        Video-MME catalog: videos, keyframes, audio_chunks, questions
+docs/paper/        paper, figures, numbers.json
+results/golden/    committed all-paths run
+results/paper/     the exports the paper cites
+```
 
 ## Development
 
 ```bash
-pip install -e ".[dev,demo]"
-pytest
+pip install -e ".[dev]"
+pytest                       # offline: a fake Gemini client and a generated test video
 ruff check src tests scripts
+python scripts/schema_apply_smoke.py
+python -m video_benchmark.local_demo
 ```
 
-Tune A/B sweeps (`scripts/run_tune_ab.sh`) are lab tooling.
+The Pixeltable release is the `pixeltable==` pin in [`pyproject.toml`](pyproject.toml). [CI](.github/workflows/ci.yml) checks the pin, lint, offline provider tests, CLI help, repeated isolated schema application, a real local media graph, and showcase rendering. [Upgrade watch](.github/workflows/upgrade-watch.yml) tests newer releases with their dependencies and fails with a pin-bump notice when they pass. [Dependabot](.github/dependabot.yml) updates GitHub Actions.
+
+To rebuild the paper: `pip install -e ".[paper]"`, then `python scripts/build_paper_figures.py && ./scripts/build_paper.sh` (needs `pandoc` and `tectonic`).
 
 ## License
 
-Apache-2.0. Sample video from [Pixeltable docs](https://github.com/pixeltable/pixeltable/blob/main/docs/resources/The-Pursuit-of-Happiness.mp4). Video-MME annotations: academic use only.
+Apache-2.0. Sample video from the [Pixeltable docs](https://github.com/pixeltable/pixeltable/blob/main/docs/resources/The-Pursuit-of-Happiness.mp4). Video-MME annotations: academic use only.

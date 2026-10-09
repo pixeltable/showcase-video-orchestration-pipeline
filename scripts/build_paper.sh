@@ -15,7 +15,7 @@ if ! command -v tectonic >/dev/null 2>&1; then
 fi
 
 mkdir -p docs/paper/figures
-if [[ ! -f docs/paper/figures/cost_by_path.png ]]; then
+if [[ ! -f docs/paper/figures/pursuit_cost_breakdown.png ]]; then
   echo "Generating figures..."
   python scripts/build_paper_figures.py
 fi

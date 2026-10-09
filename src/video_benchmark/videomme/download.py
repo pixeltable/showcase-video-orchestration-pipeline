@@ -58,10 +58,7 @@ def download_video(
 
     # Prefer <=480p mp4; hard-cap filesize for long clips.
     tmp_tmpl = str(out.with_suffix('')) + '.%(ext)s'
-    fmt = (
-        f'bv*[height<={MAX_HEIGHT}][ext=mp4]+ba[ext=m4a]/'
-        f'b[height<={MAX_HEIGHT}][ext=mp4]/w'
-    )
+    fmt = f'bv*[height<={MAX_HEIGHT}][ext=mp4]+ba[ext=m4a]/b[height<={MAX_HEIGHT}][ext=mp4]/w'
     full_cmd = [
         *cmd,
         '--no-playlist',

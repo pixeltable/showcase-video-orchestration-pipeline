@@ -7,7 +7,7 @@ if [[ ! -d .venv ]]; then
 fi
 
 .venv/bin/pip install -q -U pip
-.venv/bin/pip install -q -e ".[analytics]"
-.venv/bin/python -m ipykernel install --user --name video-benchmark --display-name "video-benchmark" --force
+.venv/bin/pip install -q -e ".[notebook]"
+.venv/bin/python -m ipykernel install --user --name video-benchmark --display-name "video-benchmark"
 
 exec .venv/bin/jupyter notebook notebooks/pipeline_analytics.ipynb
