@@ -17,6 +17,13 @@ def media_identity(path: str | Path) -> dict:
     return {'sha256': digest.hexdigest(), 'bytes': media.stat().st_size}
 
 
+def input_identity(payload: dict) -> str:
+    """Canonical identity of accepted inputs; file identity is supplied as a bytes digest."""
+    return hashlib.sha256(json.dumps(
+        payload, sort_keys=True, ensure_ascii=False, allow_nan=False
+    ).encode()).hexdigest()
+
+
 def source_identity() -> str:
     """Hash the package source including uncommitted edits, with stable relative paths."""
     root = Path(__file__).resolve().parent
@@ -42,8 +49,9 @@ def pipeline_identity(config: dict, paths: list[str], sdk_version: str) -> str:
     """Freeze benchmark computation, including UDF bodies schema diff cannot inspect."""
     root = Path(__file__).resolve().parent
     names = (
-        'config.py', 'schema.py', 'evidence.py', 'oss.py', 'pricing.py', 'prompts.py',
-        'providers.py', 'videomme/schema.py', 'videomme/prompts.py', 'videomme/scoring.py',
+        'accounting.py', 'config.py', 'schema.py', 'evidence.py', 'oss.py', 'pricing.py',
+        'prompts.py', 'providers.py', 'videomme/schema.py', 'videomme/prompts.py',
+        'videomme/scoring.py',
     )
     digest = hashlib.sha256(json.dumps(
         {'config': config, 'paths': sorted(paths), 'sdk': sdk_version}, sort_keys=True

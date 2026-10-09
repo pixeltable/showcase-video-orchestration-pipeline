@@ -69,6 +69,7 @@ class FakeGemini:
     # Kinds of call that return no text, as a recitation or safety stop does.
     empty_kinds: set[str] = field(default_factory=set)
     missing_usage_kinds: set[str] = field(default_factory=set)
+    missing_usage_calls: dict[str, set[int]] = field(default_factory=dict)
     blocked_kinds: set[str] = field(default_factory=set)
     ambiguous_cache_kinds: set[str] = field(default_factory=set)
 
@@ -121,7 +122,9 @@ class FakeGemini:
                     'thoughts_token_count': 50 if kind in {'native', 'synthesis'} else 0,
                 },
             }
-        if kind in self.missing_usage_kinds:
+        call_number = sum(call['kind'] == kind for call in self.calls)
+        if (kind in self.missing_usage_kinds
+                or call_number in self.missing_usage_calls.get(kind, set())):
             payload.pop('usage_metadata')
         if kind in self.blocked_kinds:
             payload['candidates'] = None

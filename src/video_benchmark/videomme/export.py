@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from video_benchmark import pricing
+from video_benchmark.accounting import cost_totals
 from video_benchmark.config import BenchmarkConfig, config_manifest_dict
 from video_benchmark.paths import PATH_LABELS
 from video_benchmark.reporting import environment
@@ -36,10 +37,13 @@ def _accuracy_block(
 ) -> dict[str, Any]:
     k = sum(1 for row in rows if row.get(field(path, 'correct')))
     n = len(rows)
-    unknown = sum(row[field(path, 'cost')] is None for row in rows)
-    total = sum(row[field(path, 'cost')] or 0.0 for row in rows)
-    list_unknown = sum(row[field(path, 'list_cost')] is None for row in rows)
-    list_total = sum(row[field(path, 'list_cost')] or 0.0 for row in rows)
+    costs = cost_totals(row[field(path, 'cost')] for row in rows)
+    listed = cost_totals(row[field(path, 'list_cost')] for row in rows)
+    # Historical exports have complete costs but no separately recorded known subtotal.
+    known = sum(row.get(field(path, 'response_accounted_cost'),
+                        row[field(path, 'cost')] or 0.0) for row in rows)
+    list_known = sum(row.get(field(path, 'response_accounted_list_cost'),
+                             row[field(path, 'list_cost')] or 0.0) for row in rows)
     return {
         'n': n,
         'correct': k,
@@ -51,13 +55,14 @@ def _accuracy_block(
             ) if n and intervals else None
         ),
         'accuracy_wilson_ci95': wilson_interval(k, n) if n and intervals else None,
-        'unknown_cost_questions': unknown,
-        'response_accounted_cost_usd': total,
-        'mean_cost_usd': total / n if n and not unknown else None,
-        'total_cost_usd': total if not unknown else None,
-        'cost_per_correct_usd': total / k if k and not unknown else None,
-        'mean_list_cost_usd': list_total / n if n and not list_unknown else None,
-        'total_list_cost_usd': list_total if not list_unknown else None,
+        'unknown_cost_questions': costs.unknown,
+        'response_accounted_cost_usd': known,
+        'response_accounted_list_cost_usd': list_known,
+        'mean_cost_usd': costs.total / n if n and costs.total is not None else None,
+        'total_cost_usd': costs.total,
+        'cost_per_correct_usd': costs.total / k if k and costs.total is not None else None,
+        'mean_list_cost_usd': listed.total / n if n and listed.total is not None else None,
+        'total_list_cost_usd': listed.total,
     }
 
 
@@ -144,7 +149,20 @@ def evidence_summary(videos: list[dict[str, Any]]) -> dict[str, Any]:
             out[stage] = {
                 k: sum(v[f'{stage}_{k}'] for v in videos) for k in ('calls', 'failed', 'empty')
             }
-            out[stage]['list_cost_usd'] = sum(v[f'{stage}_list_cost'] for v in videos)
+            out[stage]['unknown_cost_calls'] = sum(
+                v.get(f'{stage}_unknown_cost', 0) for v in videos
+            )
+            out[stage]['list_cost_usd'] = cost_totals(
+                v[f'{stage}_list_cost'] for v in videos
+            ).total
+            out[stage]['response_accounted_cost_usd'] = sum(
+                v.get(f'{stage}_response_accounted_cost', v[f'{stage}_cost'] or 0.0)
+                for v in videos
+            )
+            out[stage]['response_accounted_list_cost_usd'] = sum(
+                v.get(f'{stage}_response_accounted_list_cost', v[f'{stage}_list_cost'] or 0.0)
+                for v in videos
+            )
     return out
 
 
@@ -179,7 +197,7 @@ def format_report(summary: dict[str, Any], config: BenchmarkConfig, seed: int) -
             e = summary['evidence'][stage]
             lines.append(
                 f'- Evidence {name}: {e["calls"]} calls, {e["failed"]} failed, '
-                f'{e["empty"]} returned no text'
+                f'{e["empty"]} returned no text, {e["unknown_cost_calls"]} unknown cost'
             )
     lines += [
         '',
@@ -202,6 +220,13 @@ def format_report(summary: dict[str, Any], config: BenchmarkConfig, seed: int) -
             f'{_usd(block["mean_cost_usd"])} | {_usd(block["mean_list_cost_usd"])} | '
             f'{_usd(block["cost_per_correct_usd"])} | {block["failed_calls"]} |'
         )
+    for path, block in summary['paths'].items():
+        if block['unknown_cost_questions']:
+            lines += ['', f'Path {path}: {block["unknown_cost_questions"]} questions have unknown '
+                      f'cost. Known recorded subtotal: '
+                      f'{_usd(block["response_accounted_cost_usd"])} accounted, '
+                      f'{_usd(block["response_accounted_list_cost_usd"])} list; '
+                      'these partial subtotals exclude unknown costs.']
     lines += [
         '',
         '## Paired comparisons',
@@ -245,7 +270,8 @@ def export_run(
         'n_requested': n,
         'dataset': HF_DATASET,
         'dataset_config': HF_CONFIG,
-        'dataset_revision': HF_REVISION,
+        'dataset_revision': predictions[0].get('annotation_revision', HF_REVISION)
+                            if predictions else HF_REVISION,
         'paths': paths,
         'video_ids': sorted({row['video_id'] for row in predictions}),
         'config': config_manifest_dict(config),

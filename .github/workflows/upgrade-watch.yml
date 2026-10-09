@@ -46,14 +46,14 @@ jobs:
         run: python scripts/schema_apply_smoke.py
       - name: Local media graph
         run: python -m video_benchmark.local_demo
-      - name: Ask for a pin bump when a newer release is green
+      - name: Report compatibility and any suggested pin bump
         run: |
           pin="$(python scripts/pixeltable_pin.py)"
           installed="$(python -c 'import pixeltable as pxt; print(pxt.__version__)')"
           echo "pin=${pin} installed=${installed}"
           if [ "$installed" = "$pin" ]; then
-            echo "Installed Pixeltable matches the pyproject.toml pin."
+            echo "Pixeltable ${installed} passed the compatibility checks and matches the project pin." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          echo "Newer Pixeltable ${installed} passed tests. Bump pyproject.toml to pixeltable==${installed}."
-          exit 1
+          echo "::notice::Pixeltable ${installed} passed compatibility checks; consider updating the ${pin} project pin."
+          echo "Pixeltable ${installed} passed the compatibility checks. The project remains pinned to ${pin}; review a pin update separately." >> "$GITHUB_STEP_SUMMARY"

@@ -6,6 +6,7 @@ No provider credentials, downloads, or model calls are used. The catalog is temp
 from __future__ import annotations
 
 import fractions
+import hashlib
 import json
 import os
 import shutil
@@ -54,17 +55,24 @@ def make_demo_video(
 
 
 def run_local_demo(home: Path) -> dict:
-    """Apply an actual TableModel graph twice, insert one real media row, verify outputs."""
+    """Own preparation, reuse it for requests, and deliberately refresh a changed policy."""
     import pixeltable as pxt
     from pixeltable.functions.audio import audio_splitter
     from pixeltable.functions.image import resize
     from pixeltable.functions.video import extract_audio, frame_iterator, get_duration
+
+    from video_benchmark import local_demo_rules as rules
+    from video_benchmark.provenance import media_identity
+
+    rules.preparations.clear()
+    rules.reviews.clear()
 
     TableModel = pxt.model_base()
 
     class Clips(TableModel, name='clips'):
         clip_id = pxt.Column(type=pxt.String, primary_key=True)
         video: pxt.Video
+        minimum_brightness: pxt.Float
         duration_sec = get_duration(video)  # noqa: F821
         audio = extract_audio(video, format='mp3')  # noqa: F821
 
@@ -73,6 +81,8 @@ def run_local_demo(home: Path) -> dict:
     ):
         position_sec = frame_attrs.time.astype(pxt.Float)  # noqa: F821
         thumbnail = resize(frame, (128, 96))  # noqa: F821
+        brightness = rules.mean_brightness(frame)  # noqa: F821
+        eligible = brightness >= minimum_brightness  # noqa: F821
 
     class AudioSegments(
         TableModel, name='audio_segments', base=Clips,
@@ -80,28 +90,86 @@ def run_local_demo(home: Path) -> dict:
     ):
         pass
 
+    @pxt.query
+    def candidate_frames(clip_id: str):
+        return Frames.where((Frames.clip_id == clip_id) & Frames.eligible).order_by(
+            Frames.position_sec
+        ).select(Frames.position_sec, Frames.brightness)
+
+    class Requests(TableModel, name='requests'):
+        request_id = pxt.Column(type=pxt.String, primary_key=True)
+        clip_id: pxt.String
+        evidence = candidate_frames(clip_id)  # noqa: F821
+        decision = rules.review_result(evidence, request_id)  # noqa: F821
+
     catalog = 'local_media_demo'
     pxt.create_dir(catalog)
     for _ in range(2):
         TableModel.update_all(catalog)
-    status = pxt.get_table(f'{catalog}.clips').insert([
-        {'clip_id': 'demo', 'video': str(make_demo_video(home / 'demo.mp4'))}
+    clips = pxt.get_table(f'{catalog}.clips')
+    source = make_demo_video(home / 'demo.mp4')
+    source_identity = media_identity(source)
+    status = clips.insert([
+        {'clip_id': 'demo', 'video': str(source), 'minimum_brightness': 0.0}
     ])
     assert status.num_excs == 0, status
     frames = pxt.get_table(f'{catalog}.frames')
-    thumbnails = list(frames.order_by(frames.position_sec).select(
-        frames.position_sec, frames.thumbnail
-    ).collect())
     segments = pxt.get_table(f'{catalog}.audio_segments')
-    chunks = list(segments.select(segments.segment_start, segments.segment_end).collect())
-    assert len(thumbnails) == 4
-    assert all(row['thumbnail'].size == (128, 96) for row in thumbnails)
-    assert len(chunks) >= 2
+
+    def preparation_snapshot() -> dict:
+        thumbnails = list(frames.order_by(frames.position_sec).select(
+            frames.position_sec, frames.thumbnail, frames.brightness
+        ).collect())
+        chunks = list(segments.order_by(segments.segment_start).select(
+            segments.segment_start, segments.segment_end, path=segments.audio_segment.localpath
+        ).collect())
+        assert len(thumbnails) == 4
+        assert all(row['thumbnail'].size == (128, 96) for row in thumbnails)
+        assert len(chunks) >= 2
+        return {
+            'frames': [{
+                'position_sec': row['position_sec'], 'thumbnail_size': [128, 96],
+                'thumbnail_sha256': hashlib.sha256(row['thumbnail'].tobytes()).hexdigest(),
+                'brightness': row['brightness'],
+            } for row in thumbnails],
+            'audio_segments': [{
+                'segment_start': row['segment_start'], 'segment_end': row['segment_end'],
+                'audio_sha256': media_identity(row['path'])['sha256'],
+            } for row in chunks],
+        }
+
+    prepared = preparation_snapshot()
+    requests = pxt.get_table(f'{catalog}.requests')
+    status = requests.insert([
+        {'request_id': request, 'clip_id': 'demo'} for request in ('first', 'second')
+    ])
+    assert status.num_excs == 0, status
+
+    def decisions() -> dict[str, str]:
+        return {row['request_id']: row['decision'] for row in requests.select(
+            requests.request_id, requests.decision
+        ).collect()}
+
+    before = decisions()
+    assert before == {request: '4 frames meet the review policy' for request in ('first', 'second')}
+    assert len(rules.preparations) == 4 and len(rules.reviews) == 2
+    # Editing a business rule updates eligible frames, but the cross-table query snapshot
+    # remains unchanged until the application deliberately refreshes that request.
+    clips.update({'minimum_brightness': 128.0}, where=clips.clip_id == 'demo')
+    assert frames.where(frames.eligible).count() == 2
+    assert decisions() == before
+    status = requests.recompute_columns('evidence', where=requests.request_id == 'first')
+    assert status.num_excs == 0, status
+    after = decisions()
+    assert after == {'first': '2 frames meet the review policy', 'second': before['second']}
+    assert len(rules.preparations) == 4 and rules.reviews == ['first', 'second', 'first']
+    assert preparation_snapshot() == prepared and media_identity(source) == source_identity
     result = {
         'pixeltable_version': pxt.__version__, 'provider_calls': 0,
-        'frames': [{'position_sec': row['position_sec'], 'thumbnail_size': [128, 96]}
-                   for row in thumbnails],
-        'audio_segments': chunks,
+        **prepared,
+        'requests_before_policy_change': before, 'requests_after_explicit_refresh': after,
+        'prepared_frames': len(rules.preparations), 'review_evaluations': list(rules.reviews),
+        'source_and_preparation_unchanged': True,
     }
     print(json.dumps(result, indent=2))
     return result

@@ -305,3 +305,136 @@ def test_missing_or_ambiguous_usage_survives_prediction_collection(
     block = summarize(predictions, ['1', '2'])['paths'][path]
     assert block['unknown_cost_questions'] == 1 and block['total_cost_usd'] is None
     assert block['accuracy'] == 1.0
+
+
+def _question(question_id='v1-0', video_id='v1'):
+    return {
+        'question_id': question_id, 'video_id': video_id, 'duration': 'short',
+        'domain': 'Knowledge', 'url': f'https://example.com/{video_id}', 'task_type': 'OCR',
+        'question': 'Question?', 'options': ['A. a', 'B. b', 'C. c', 'D. d'], 'answer': 'B',
+    }
+
+
+def _small_config():
+    return replace(runner.videomme_config(load_config()), vision_sample_keyframes=4,
+                   frame_select_budget=3, gemini_synth_max_images=2)
+
+
+@pytest.mark.parametrize('change', [
+    'question', 'options', 'answer', 'video_id', 'revision', 'media'
+])
+def test_resume_rejects_changed_input_before_any_new_calls(
+    fresh_catalog, fake_gemini, test_video, tmp_path, monkeypatch, change
+):
+    import pixeltable as pxt
+
+    media = tmp_path / 'clip.mp4'
+    media.write_bytes(test_video.read_bytes())
+    config = _small_config()
+    original = _question()
+    runner.run_videomme(config, {'2'}, [original], {'v1': str(media)})
+    calls_before = len(fake_gemini.calls)
+    changed = dict(original)
+    if change in ('question', 'options', 'answer', 'video_id'):
+        changed[change] = ['A. changed', 'B. b'] if change == 'options' else 'changed'
+        if change == 'video_id':
+            changed['url'] = 'https://example.com/changed'
+    elif change == 'revision':
+        monkeypatch.setattr(runner, 'HF_REVISION', 'different-annotation-revision')
+    elif change == 'media':
+        # Replacing the accepted file at the SAME path must not erase its old identity.
+        media.write_bytes(media.read_bytes() + b'replacement bytes')
+    # The invocation also offers a wholly new video/question before its conflicting row.
+    batch = [_question('new-0', 'new'), changed]
+    downloads = {vid: str(media) for vid in ('v1', 'new', 'changed')}
+    with pytest.raises(runner.InputConflict, match='different inputs'):
+        runner.run_videomme(config, {'2'}, batch, downloads)
+    assert len(fake_gemini.calls) == calls_before
+    assert pxt.get_table('videomme.videos').count() == 1
+    assert pxt.get_table('videomme.questions').count() == 1
+
+
+def test_resume_accepts_same_bytes_and_new_question_reuses_preparation(
+    fresh_catalog, fake_gemini, test_video, tmp_path
+):
+    config = _small_config()
+    first = _question()
+    runner.run_videomme(config, {'2'}, [first], {'v1': str(test_video)})
+    copy = tmp_path / 'equivalent.mp4'
+    copy.write_bytes(test_video.read_bytes())
+    calls_before = len(fake_gemini.calls)
+    runner.run_videomme(config, {'2'}, [first], {'v1': str(copy)})
+    assert len(fake_gemini.calls) == calls_before
+    predictions, _ = runner.run_videomme(
+        config, {'2'}, [first, _question('v1-new')], {'v1': str(copy)}
+    )
+    assert len(predictions) == 2
+    assert [call['kind'] for call in fake_gemini.calls[calls_before:]] == ['synthesis']
+
+
+def test_resume_does_not_treat_missing_identity_as_identical(monkeypatch):
+    from types import SimpleNamespace
+
+    table = SimpleNamespace(video_id='video_id', input_sha256='input_sha256')
+    table.select = lambda *columns: SimpleNamespace(collect=lambda: [
+        {'video_id': 'legacy', 'input_sha256': None}
+    ])
+    monkeypatch.setattr(runner, '_table', lambda name: table)
+    with pytest.raises(runner.InputConflict, match='no saved input identity'):
+        runner._new_rows('videos', 'video_id', [{'video_id': 'legacy', 'input_sha256': 'new'}])
+
+
+@pytest.mark.parametrize('missing_answer', [False, True])
+def test_unknown_paid_stage_keeps_other_response_costs_and_shared_cost_once(
+    fresh_catalog, fake_gemini, test_video, missing_answer
+):
+    fake_gemini.missing_usage_calls = {'caption': {1}}
+    if missing_answer:
+        fake_gemini.missing_usage_calls['synthesis'] = {2}
+    config = _small_config()
+    predictions, videos = runner.run_videomme(
+        config, {'2'}, [_question(), _question('v1-1')], {'v1': str(test_video)}
+    )
+    block = summarize(predictions, ['2'])['paths']['2']
+    assert block['accuracy'] == 1.0 and block['unknown_cost_questions'] == 2
+    assert block['total_cost_usd'] is None and block['total_list_cost_usd'] is None
+    known_evidence = sum(videos[0][f'{stage}_response_accounted_cost']
+                         for stage in ('caption', 'asr'))
+    known_calls = sum(row['p2_call_cost'] or 0 for row in predictions)
+    assert block['response_accounted_cost_usd'] == pytest.approx(known_evidence + known_calls)
+    assert block['response_accounted_list_cost_usd'] == pytest.approx(
+        block['response_accounted_cost_usd']
+    )
+    assert block['response_accounted_cost_usd'] > 0
+    assert all(row['p2_response_accounted_cost'] > 0 for row in predictions)
+
+
+def test_historical_costs_without_subtotal_fields_remain_accounted():
+    block = summarize([{
+        'question_id': 'old', 'video_id': 'old', 'duration_bucket': 'short',
+        'p1_correct': True, 'p1_letter': 'B', 'p1_cost': 0.1, 'p1_list_cost': 0.2,
+        'p1_shared_cost': 0.0,
+    }], ['1'])['paths']['1']
+    assert block['response_accounted_cost_usd'] == block['total_cost_usd'] == 0.1
+    assert block['response_accounted_list_cost_usd'] == block['total_list_cost_usd'] == 0.2
+
+
+@pytest.mark.parametrize('response', ['failed', 'empty'])
+def test_failed_or_empty_preparation_retains_other_recorded_costs(
+    fresh_catalog, fake_gemini, test_video, response
+):
+    if response == 'failed':
+        fake_gemini.fail_kinds = {'caption'}
+    else:
+        fake_gemini.empty_kinds = {'caption'}
+    predictions, videos = runner.run_videomme(
+        _small_config(), {'2'}, [_question()], {'v1': str(test_video)}
+    )
+    block = summarize(predictions, ['2'])['paths']['2']
+    assert block['response_accounted_cost_usd'] > 0
+    assert block['response_accounted_list_cost_usd'] == pytest.approx(
+        block['response_accounted_cost_usd']
+    )
+    assert block['accuracy'] == 1.0
+    assert (block['total_cost_usd'] is None) == (response == 'failed')
+    assert videos[0]['caption_failed' if response == 'failed' else 'caption_empty'] == 4

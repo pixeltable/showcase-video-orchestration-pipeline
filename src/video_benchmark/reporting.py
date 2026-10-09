@@ -14,6 +14,7 @@ from typing import Any
 import pixeltable as pxt
 
 from video_benchmark import pricing, provenance
+from video_benchmark.accounting import cost_totals
 from video_benchmark.config import PROJECT_ROOT, BenchmarkConfig, config_manifest_dict
 from video_benchmark.paths import PATH_LABELS
 from video_benchmark.runner import table
@@ -72,19 +73,20 @@ def _stage(rows: list[dict], cost_key: str, usage_key: str, model: str) -> dict[
     usage: dict = {}
     for row in rows:
         add_usage(usage, row.get(usage_key))
+    costs = cost_totals(row.get(cost_key) for row in rows)
+    listed = cost_totals(list_cost(row.get(usage_key), model) for row in rows)
     return {
         'calls': len(rows),
         'failed_calls': sum(bool(row.get('error')) for row in rows),
-        'unknown_cost_calls': sum(row.get(cost_key) is None for row in rows),
+        'unknown_cost_calls': costs.unknown,
         # Billed but no text: a recitation or safety stop, which raises no error.
         'empty_outputs': sum(
             1 for row in rows if row.get(cost_key) is not None and not row['text']
         ),
-        'cost_usd': (sum(row[cost_key] for row in rows)
-                     if all(row.get(cost_key) is not None for row in rows) else None),
-        'response_accounted_cost_usd': sum(row.get(cost_key) or 0.0 for row in rows),
-        'list_cost_usd': ((list_cost(usage, model) or 0.0)
-                          if all(row.get(usage_key) is not None for row in rows) else None),
+        'cost_usd': costs.total,
+        'response_accounted_cost_usd': costs.known,
+        'list_cost_usd': listed.total,
+        'response_accounted_list_cost_usd': listed.known,
         'usage': usage,
     }
 
@@ -188,6 +190,11 @@ def collect_run(run_id: str, plan: PathPlan, config: BenchmarkConfig) -> dict[st
                 for stage in entry['stages'].values())
             if path == '2' else entry['cost_usd'] or 0.0
         )
+        entry['response_accounted_list_cost_usd'] = (
+            sum(stage.get('response_accounted_list_cost_usd', stage['list_cost_usd'] or 0.0)
+                for stage in entry['stages'].values())
+            if path == '2' else entry['list_cost_usd'] or 0.0
+        )
         out['paths'][path] = entry
     return out
 
@@ -244,10 +251,11 @@ def format_report(run: dict[str, Any], config: BenchmarkConfig) -> str:
         '',
         '## Cost',
         '',
-        'Billed cost includes Gemini implicit-cache discounts; list cost prices the same tokens '
-        'without them.',
+        'Accounted estimates returned token usage after cache discounts; list prices the same '
+        'tokens without them. Unknown paid costs keep totals unknown. Recorded subtotals exclude '
+        'unrecorded attempts, local compute, storage, and egress.',
         '',
-        '| Path | Billed | List | Tokens |',
+        '| Path | Accounted total | List total | Tokens |',
         '|------|-------:|-----:|--------|',
     ]
     for path, entry in run['paths'].items():
@@ -258,7 +266,8 @@ def format_report(run: dict[str, Any], config: BenchmarkConfig) -> str:
         for stage, info in (entry.get('stages') or {}).items():
             lost = [
                 f'{info[key]} {word}'
-                for key, word in (('failed_calls', 'failed'), ('empty_outputs', 'empty'))
+                for key, word in (('failed_calls', 'failed'), ('empty_outputs', 'empty'),
+                                  ('unknown_cost_calls', 'unknown cost'))
                 if info.get(key)
             ]
             calls = f'{info["calls"]} call{"s" * (info["calls"] != 1)}' + ''.join(
@@ -268,6 +277,13 @@ def format_report(run: dict[str, Any], config: BenchmarkConfig) -> str:
                 f'| &nbsp;&nbsp;{stage} ({calls}) | '
                 f'{_money(info["cost_usd"])} | {_money(info["list_cost_usd"])} | '
                 f'{_tokens(info["usage"])} |'
+            )
+        if entry['cost_usd'] is None or entry['list_cost_usd'] is None:
+            lines.append(
+                f'| &nbsp;&nbsp;Known recorded subtotal | '
+                f'{_money(entry["response_accounted_cost_usd"])} | '
+                f'{_money(entry["response_accounted_list_cost_usd"])} | '
+                'excludes unknown costs |'
             )
     lines += ['', '## Heuristic scores', '']
     score_names = list(next(iter(run['paths'].values()))['scores']) if run['paths'] else []

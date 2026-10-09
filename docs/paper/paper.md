@@ -1,7 +1,7 @@
 ---
 title: "Native and Orchestrated Video Understanding with the Same Model: A Token-Accounted Comparison of Cost and Accuracy"
 author: "Pixeltable showcase: video orchestration pipeline"
-date: "2026-09-28; inference and implementation review 2026-10-08"
+date: "2026-09-28; inference and implementation review 2026-10-09"
 geometry: margin=1in
 fontsize: 11pt
 reference-section-title: References
@@ -67,7 +67,7 @@ The benchmark is two Pixeltable catalogs, each declared as a `TableModel` graph 
 **Properties used in this study.**
 
 - *Single definition.* Both catalogs are built from one declaration. Current code also records a digest of computation source, configuration, selected paths, and SDK version; this catches UDF-body edits that an expression-only diff can miss. A mismatch requires a fresh benchmark catalog.
-- *Resumability.* Video-MME inserts small batches only if rows are absent. Completed batches survive interruption and are reused on rerun. The reported run stopped after 36 questions and resumed at question 37; the batch in flight incurred repeated provider calls that are not included in the final stored-response totals.
+- *Resumability.* Video-MME inserts small batches only if rows are absent. Current code first verifies stored input fingerprints for every video and question, including media bytes and annotation revision; conflicting inputs fail before either table inserts. Identical accepted inputs reuse their stored results. The reported run stopped after 36 questions and resumed at question 37; the batch in flight incurred repeated provider calls that are not included in the final stored-response totals.
 - *Inspectability.* Successful responses, their returned usage, and synthesis requests are queryable. API failures become per-cell errors. The Gemini wrapper currently loses the full response if `candidates=None` (also reproduced on SDK 0.7.15); failed-response usage cannot be reconstructed from that cell.
 
 The earlier version computed synthesis columns on the parent table before its views existed, then recomputed 37 columns in a fixed order; the double-billed synthesis and the cross-run evidence came from that structure. The current graph applies each catalog with one `update_all()` call, declares each table once, and scopes transient-error recomputation to the inserted batch. Synthesis query results are materialized lookups; later edits to another table require an explicit evidence and answer refresh.
@@ -90,7 +90,7 @@ Table 2 lists the rates, read on 2026-09-28. Nova calls are priced from Bedrock'
 
 : Prices in USD per million tokens (Gemini paid tier, standard; Bedrock us-east-1 on-demand).
 
-All costs account for the final stored responses at the stated rate snapshot; they are not invoice reconciliations. Retried or interrupted attempts without stored usage, provider refusals, local compute, storage, egress, taxes, and other charges are excluded. A successful response without usage is unknown cost, not free. The historically named `billed` fields retain that name in original exports for compatibility.
+All costs account for the final stored responses at the stated rate snapshot; they are not invoice reconciliations. Retried or interrupted attempts without stored usage, provider refusals, local compute, storage, egress, taxes, and other charges are excluded. A successful response without usage is unknown cost, not free. Current exports retain known subtotals; a missing stage cost makes complete totals and means null. The historically named `billed` fields retain that name in original exports for compatibility.
 
 ## 5.2 Measured token rates
 
@@ -146,16 +146,20 @@ All three Gemini paths passed all five scene checks in all six runs. The provide
 
 ![Video-MME accuracy by video length, with 95% video-cluster bootstrap intervals. A failed call counts as wrong.](figures/videomme_accuracy.png){ width=100% }
 
-The three Gemini paths answer within 4.1 points of each other, and no paired difference among them is significant (Table 4): native and orchestration both answer 79.7% of the 123 questions, native at low resolution 83.7%. Low resolution minus orchestration is +4.1 points (95% interval -4.9 to 13.0; paired video p = 0.498), native minus low resolution -4.1 points (p = 0.273). Nova Lite answers 58.5%, 21 to 25 points below each Gemini path (exploratory paired video p = 0.00110, 0.000161, and 0.000181). Nonsignificance does not establish equivalence.
+Paired video-level tests do not resolve the Gemini differences (Table 4). Low resolution minus orchestration is +4.1 points (95% interval -4.9 to 13.0; p = 0.498), native minus low resolution -4.1 points (p = 0.273). Nova Lite scores 21 to 25 points below each Gemini path (exploratory paired video p = 0.00110, 0.000161, and 0.000181). Nonsignificance does not establish equivalence.
+
+<!-- results:paper-accuracy:start -->
 
 | Path | Accuracy [95% CI] | Short | Medium | Long | Failed calls |
-|------------------------------|--------------------:|-------:|-------:|------:|-------------:|
+| ------------------------------ | --------------------: | -------: | -------: | ------: | -------------: |
 | 1 Native | 79.7% [70.7, 87.8] | 100.0% | 74.5% | 71.4% | 6 |
 | 1L Native, low resolution | 83.7% [74.8, 91.1] | 100.0% | 78.4% | 78.6% | 6 |
 | 2 Orchestrated | 79.7% [71.5, 87.0] | 86.7% | 78.4% | 76.2% | 0 |
 | 5 Nova Lite | 58.5% [50.4, 66.7] | 66.7% | 52.9% | 59.5% | 0 |
 
 : Video-MME accuracy on 123 questions (30 short, 51 medium, 42 long). A failed call counts as wrong.
+
+<!-- results:paper-accuracy:end -->
 
 **Refusals.** Gemini refused both native settings on 2 of the 41 videos, one of 30 and one of 54 minutes: each response carried no candidates, so all six native answers about them are missing, and repeating one of the calls outside the catalog returned the block reason `PROHIBITED_CONTENT`. The orchestrated path answered those six questions, four correctly, from the same videos' captions and transcripts; one of the 1,312 caption calls, on one of these videos, also returned no candidates. On the 117 questions every Gemini path answered, native scores 83.8%, low resolution 88.0%, and orchestration 80.3%; low resolution minus orchestration is then +7.7 points (0.0 to 15.4, exploratory paired video p = 0.094), and on the 36 long questions among them low resolution answers 91.7% against orchestration's 77.8%. Orchestration has a silent failure of its own: Gemini withheld the transcript of one 32-minute video with the finish reason `RECITATION` and raised no error, so that video's three questions were answered from captions and frames alone (one correct).
 
@@ -167,14 +171,18 @@ The three Gemini paths answer within 4.1 points of each other, and no paired dif
 
 At list price, orchestration costs \$0.029 per question, a quarter of native (\$0.107) and half of native at low resolution (\$0.055); Nova Lite costs \$0.010 (Table 5). Per correct answer the ranking is the same: \$0.036 for orchestration, \$0.066 for low resolution, and \$0.135 for native.
 
+<!-- results:paper-cost:start -->
+
 | Path | List per question [95% CI] | Accounted per question | Input from cache | List per correct |
-|------------------------------|-----------------------:|--------------:|-------------:|-------------:|
+| ------------------------------ | -------------------------: | ---------------: | --------------: | --------------: |
 | 1 Native | 0.107 [0.075, 0.141] | 0.061 | 49% | 0.135 |
 | 1L Native, low resolution | 0.055 [0.039, 0.073] | 0.040 | 34% | 0.066 |
 | 2 Orchestrated | 0.029 [0.023, 0.035] | 0.028 | 2% | 0.036 |
 | 5 Nova Lite | 0.010 [0.008, 0.012] | 0.010 | none | 0.018 |
 
-: Video-MME cost in USD. Orchestration's cost per question includes a third of its video's captions and transcript.
+: Video-MME cost in USD. Orchestration's cost per question includes its allocated share of the video's captions and transcript.
+
+<!-- results:paper-cost:end -->
 
 **Implicit caching.** The three questions about a video repeat the same video at the start of the prompt, and they were asked within minutes of each other. Gemini's implicit cache served 49% of native's input tokens and 34% of low resolution's at a tenth of the input rate; orchestration's answer calls share little and were served 2%. From returned usage after cache discounts, native prices at \$0.061 per question and low resolution \$0.040, 1.4 times orchestration's \$0.028. The cache is applied at the provider's discretion, so list price is the reproducible comparison; the response-accounted estimate is \$17.12 for the four paths, against \$24.74 at list price; neither total includes unrecorded repeated attempts.
 
@@ -218,10 +226,11 @@ Default resolution also runs into the context window. The longest videos answere
 
 # 10 Reproducibility
 
-The exports this paper cites are committed under `results/paper/`: the Pursuit runs (`pursuit/`, one directory per run, with `summary.json` holding each call's usage and cost), the all-paths run (`pursuit-all/`), and the Video-MME run (`videomme/`, with `predictions.jsonl` per question and `videos.jsonl` per video). Nova's answers for the first 36 questions were recomputed after the input fix of Section 6, so every Nova answer in the export used the same input. `docs/paper/numbers.json` reanalyses those fixed predictions with the corrected video-cluster inference as of 2026-10-08; original export files and their SDK provenance remain unchanged. It is regenerated, with the figures, by:
+The exports this paper cites are committed under `results/paper/`: the Pursuit runs (`pursuit/`, one directory per run, with `summary.json` holding each call's usage and cost), the all-paths run (`pursuit-all/`), and the Video-MME run (`videomme/`, with `predictions.jsonl` per question and `videos.jsonl` per video). Nova's answers for the first 36 questions were recomputed after the input fix of Section 6, so every Nova answer in the export used the same input. `docs/paper/numbers.json` reanalyses those fixed predictions with corrected video-cluster inference; original export files and their SDK provenance remain unchanged. Regenerate the figures and repeated result tables before building:
 
 ```bash
 python scripts/build_paper_figures.py
+python scripts/render_paper_tables.py
 ./scripts/build_paper.sh
 ```
 

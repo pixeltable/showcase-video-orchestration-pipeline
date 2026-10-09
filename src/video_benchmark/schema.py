@@ -234,11 +234,11 @@ def build_models(config: BenchmarkConfig, plan: PathPlan) -> type:
         )
 
     if plan.orchestrated:
-        # A frame whose caption call failed carries no evidence (and was not billed).
+        # Keep every cost row, including unknown spend; selection drops empty captions.
         @pxt.query
         def gemini_frame_rows(run_id: str):
             return (
-                Keyframes.where((Keyframes.run_id == run_id) & (Keyframes.gemini_caption != None))  # noqa: E711
+                Keyframes.where(Keyframes.run_id == run_id)
                 .order_by(Keyframes.position_sec)
                 .select(
                     position_sec=Keyframes.position_sec,

@@ -12,6 +12,8 @@ from typing import Any
 
 import pixeltable as pxt
 
+from video_benchmark.accounting import cost_totals
+
 PRICES_AS_OF = '2026-09-28'
 PRICE_SOURCES = {
     'gemini': 'https://ai.google.dev/gemini-api/docs/pricing (paid tier, standard, not batch)',
@@ -211,11 +213,11 @@ def fal_cost(duration_sec: float, max_duration_sec: float) -> float:
     return fal_cost_impl(duration_sec, max_duration_sec)
 
 
-def sum_costs_impl(rows: list) -> float:
-    """Sum known usage-priced costs. Missing usage and retries may incur unrecorded spend."""
-    return float(sum(row['cost'] for row in rows if isinstance(row, dict) and row.get('cost')))
+def sum_costs_impl(rows: list) -> float | None:
+    """Complete evidence cost; missing usage makes it unknown, not a partial total."""
+    return cost_totals(row.get('cost') if isinstance(row, dict) else None for row in rows).total
 
 
 @pxt.udf
-def sum_costs(rows: list) -> float:
+def sum_costs(rows: list) -> float | None:
     return sum_costs_impl(rows)

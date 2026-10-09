@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 
+from video_benchmark import config as configuration
 from video_benchmark.config import PROJECT_ROOT, load_config
 from video_benchmark.paths import PATH_LABELS
 from video_benchmark.schema import CatalogSchemaMismatch, plan_paths
@@ -14,10 +15,10 @@ from video_benchmark.videomme import DEFAULT_N, DEFAULT_SEED
 from video_benchmark.videomme.export import export_run
 from video_benchmark.videomme.runner import (
     ALLOWED_PATHS,
+    InputConflict,
     parse_paths,
     prepare_sample,
     run_videomme,
-    videomme_config,
 )
 from video_benchmark.videomme.schema import reset_catalog
 
@@ -45,13 +46,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        config = videomme_config(load_config())
+        configuration.load_dotenv()
+        paths = parse_paths(args.paths or os.environ.get('VIDEOME_PATHS'))
+        config = load_config(paths, videomme=True)
         n = args.n if args.n is not None else int(os.environ.get('VIDEOME_N', DEFAULT_N))
         seed = (
             args.seed if args.seed is not None
             else int(os.environ.get('VIDEOME_SEED', DEFAULT_SEED))
         )
-        paths = parse_paths(args.paths or os.environ.get('VIDEOME_PATHS'))
     except ValueError as exc:
         print(f'Error: {exc}', file=sys.stderr)
         return 1
@@ -80,7 +82,7 @@ def main() -> int:
         reset_catalog()
     try:
         predictions, videos = run_videomme(config, paths, questions, downloads)
-    except CatalogSchemaMismatch as exc:
+    except (CatalogSchemaMismatch, InputConflict) as exc:
         print(f'Error: {exc}', file=sys.stderr)
         return 1
     export_base = Path(args.export) if args.export else PROJECT_ROOT / 'results' / 'videomme'

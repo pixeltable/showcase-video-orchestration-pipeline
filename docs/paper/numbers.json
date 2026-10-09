@@ -7,6 +7,7 @@
     "4": "Native fal video-understanding (first 120 s)",
     "5": "Native Amazon Nova (Bedrock)"
   },
+  "clip_check_count": 5,
   "pursuit": {
     "1": {
       "runs": 6,
@@ -20,12 +21,12 @@
       "clip_hits_mean": 5,
       "clip_hits_min": 5,
       "parts_mean": {
-        "output": 0.003958333333333334,
-        "input_VIDEO": 0.0201195,
         "input_TEXT": 1.77e-05,
         "thinking": 0.005367916666666667,
-        "input_AUDIO": 0.00816,
-        "cached_input": 0.0
+        "input_VIDEO": 0.0201195,
+        "cached_input": 0.0,
+        "output": 0.003958333333333334,
+        "input_AUDIO": 0.00816
       },
       "nova_model": null
     },
@@ -41,12 +42,12 @@
       "clip_hits_mean": 5,
       "clip_hits_min": 5,
       "parts_mean": {
-        "output": 0.004208333333333333,
-        "input_VIDEO": 0.0054315,
         "input_TEXT": 1.77e-05,
         "thinking": 0.00406,
-        "input_AUDIO": 0.00816,
-        "cached_input": 0.0
+        "input_VIDEO": 0.0054315,
+        "cached_input": 0.0,
+        "output": 0.004208333333333333,
+        "input_AUDIO": 0.00816
       },
       "nova_model": null
     },
@@ -62,12 +63,12 @@
       "clip_hits_mean": 5,
       "clip_hits_min": 5,
       "parts_mean": {
-        "output": 0.014511666666666666,
         "input_TEXT": 0.00201415,
         "thinking": 0.0036141666666666666,
+        "cached_input": 0.0,
         "input_IMAGE": 0.0024768,
-        "input_AUDIO": 0.008159,
-        "cached_input": 0.0
+        "output": 0.014511666666666666,
+        "input_AUDIO": 0.008159
       },
       "nova_model": null,
       "captions_costs": 0.011137949999999999,
@@ -100,14 +101,15 @@
       "clip_hits_mean": 1,
       "clip_hits_min": 1,
       "parts_mean": {
-        "output": 0.00039040000000000006,
-        "input_VIDEO": 0.0595904
+        "input_VIDEO": 0.0595904,
+        "output": 0.00039040000000000006
       },
       "nova_model": "amazon.nova-pro-v1:0"
     }
   },
   "videomme": {
     "run": "20260929T033423Z",
+    "nova_model": "amazon.nova-lite-v1:0",
     "n_questions": 123,
     "n_videos": 41,
     "paths": {
@@ -125,11 +127,12 @@
         ],
         "unknown_cost_questions": 0,
         "response_accounted_cost_usd": 7.48002911,
+        "response_accounted_list_cost_usd": 13.1814266,
         "mean_cost_usd": 0.06081324479674797,
         "total_cost_usd": 7.48002911,
         "cost_per_correct_usd": 0.07632682765306123,
-        "mean_list_cost_usd": 0.10716606991869919,
-        "total_list_cost_usd": 13.1814266,
+        "mean_list_cost_usd": 0.10716606991869917,
+        "total_list_cost_usd": 13.181426599999998,
         "label": "Native Gemini (full video)",
         "failed_calls": 6,
         "no_letter": 6,
@@ -158,9 +161,10 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 0.28066741,
-            "mean_cost_usd": 0.009355580333333334,
-            "total_cost_usd": 0.28066741,
-            "cost_per_correct_usd": 0.009355580333333334,
+            "response_accounted_list_cost_usd": 0.3653935,
+            "mean_cost_usd": 0.009355580333333332,
+            "total_cost_usd": 0.28066740999999995,
+            "cost_per_correct_usd": 0.009355580333333332,
             "mean_list_cost_usd": 0.012179783333333333,
             "total_list_cost_usd": 0.3653935
           },
@@ -178,9 +182,10 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 2.13517765,
-            "mean_cost_usd": 0.041866228431372554,
-            "total_cost_usd": 2.13517765,
-            "cost_per_correct_usd": 0.05618888552631579,
+            "response_accounted_list_cost_usd": 3.2153158,
+            "mean_cost_usd": 0.04186622843137256,
+            "total_cost_usd": 2.1351776500000006,
+            "cost_per_correct_usd": 0.056188885526315804,
             "mean_list_cost_usd": 0.06304540784313725,
             "total_list_cost_usd": 3.2153158
           },
@@ -198,13 +203,15 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 5.06418405,
+            "response_accounted_list_cost_usd": 9.6007173,
             "mean_cost_usd": 0.1205758107142857,
             "total_cost_usd": 5.06418405,
             "cost_per_correct_usd": 0.168806135,
             "mean_list_cost_usd": 0.22858850714285714,
             "total_list_cost_usd": 9.6007173
           }
-        }
+        },
+        "answer_input_cache_fraction": 0.49001362470354703
       },
       "1L": {
         "n": 123,
@@ -220,11 +227,12 @@
         ],
         "unknown_cost_questions": 0,
         "response_accounted_cost_usd": 4.88040313,
-        "mean_cost_usd": 0.03967807422764228,
-        "total_cost_usd": 4.88040313,
-        "cost_per_correct_usd": 0.04738255466019418,
-        "mean_list_cost_usd": 0.05519130325203252,
-        "total_list_cost_usd": 6.7885303,
+        "response_accounted_list_cost_usd": 6.7885303,
+        "mean_cost_usd": 0.039678074227642274,
+        "total_cost_usd": 4.8804031299999995,
+        "cost_per_correct_usd": 0.04738255466019417,
+        "mean_list_cost_usd": 0.055191303252032545,
+        "total_list_cost_usd": 6.788530300000003,
         "label": "Native Gemini, low media resolution",
         "failed_calls": 6,
         "no_letter": 6,
@@ -253,11 +261,12 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 0.15511059,
+            "response_accounted_list_cost_usd": 0.1872063,
             "mean_cost_usd": 0.005170353,
             "total_cost_usd": 0.15511059,
             "cost_per_correct_usd": 0.005170353,
-            "mean_list_cost_usd": 0.0062402099999999995,
-            "total_list_cost_usd": 0.1872063
+            "mean_list_cost_usd": 0.00624021,
+            "total_list_cost_usd": 0.18720630000000002
           },
           "medium": {
             "n": 51,
@@ -273,9 +282,10 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 1.59627088,
-            "mean_cost_usd": 0.03129942901960785,
-            "total_cost_usd": 1.59627088,
-            "cost_per_correct_usd": 0.039906772,
+            "response_accounted_list_cost_usd": 1.7675317,
+            "mean_cost_usd": 0.03129942901960784,
+            "total_cost_usd": 1.5962708799999998,
+            "cost_per_correct_usd": 0.03990677199999999,
             "mean_list_cost_usd": 0.034657484313725485,
             "total_list_cost_usd": 1.7675317
           },
@@ -293,13 +303,15 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 3.12902166,
-            "mean_cost_usd": 0.0745005157142857,
-            "total_cost_usd": 3.12902166,
-            "cost_per_correct_usd": 0.09481883818181817,
-            "mean_list_cost_usd": 0.11509029285714285,
-            "total_list_cost_usd": 4.8337923
+            "response_accounted_list_cost_usd": 4.8337923,
+            "mean_cost_usd": 0.07450051571428569,
+            "total_cost_usd": 3.129021659999999,
+            "cost_per_correct_usd": 0.09481883818181815,
+            "mean_list_cost_usd": 0.11509029285714283,
+            "total_list_cost_usd": 4.833792299999999
           }
-        }
+        },
+        "answer_input_cache_fraction": 0.3410803392268801
       },
       "2": {
         "n": 123,
@@ -315,9 +327,10 @@
         ],
         "unknown_cost_questions": 0,
         "response_accounted_cost_usd": 3.49882971,
-        "mean_cost_usd": 0.02844577,
-        "total_cost_usd": 3.49882971,
-        "cost_per_correct_usd": 0.035702343979591836,
+        "response_accounted_list_cost_usd": 3.5065428,
+        "mean_cost_usd": 0.028445770000000006,
+        "total_cost_usd": 3.4988297100000008,
+        "cost_per_correct_usd": 0.03570234397959184,
         "mean_list_cost_usd": 0.028508478048780487,
         "total_list_cost_usd": 3.5065428,
         "label": "Orchestrated Gemini (keyframes + ASR + synthesis)",
@@ -348,11 +361,12 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 0.28199068,
+            "response_accounted_list_cost_usd": 0.28419279999999997,
             "mean_cost_usd": 0.009399689333333332,
             "total_cost_usd": 0.28199068,
             "cost_per_correct_usd": 0.010845795384615385,
-            "mean_list_cost_usd": 0.009473093333333332,
-            "total_list_cost_usd": 0.28419279999999997
+            "mean_list_cost_usd": 0.009473093333333333,
+            "total_list_cost_usd": 0.2841928
           },
           "medium": {
             "n": 51,
@@ -368,11 +382,12 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 0.95710324,
-            "mean_cost_usd": 0.01876673019607843,
-            "total_cost_usd": 0.95710324,
-            "cost_per_correct_usd": 0.023927581,
-            "mean_list_cost_usd": 0.018863972549019607,
-            "total_list_cost_usd": 0.9620626
+            "response_accounted_list_cost_usd": 0.9620626,
+            "mean_cost_usd": 0.018766730196078434,
+            "total_cost_usd": 0.9571032400000001,
+            "cost_per_correct_usd": 0.023927581000000003,
+            "mean_list_cost_usd": 0.01886397254901961,
+            "total_list_cost_usd": 0.9620626000000001
           },
           "long": {
             "n": 42,
@@ -388,13 +403,15 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 2.25973579,
-            "mean_cost_usd": 0.0538032330952381,
-            "total_cost_usd": 2.25973579,
-            "cost_per_correct_usd": 0.0706167434375,
+            "response_accounted_list_cost_usd": 2.2602873999999997,
+            "mean_cost_usd": 0.05380323309523809,
+            "total_cost_usd": 2.2597357899999997,
+            "cost_per_correct_usd": 0.07061674343749999,
             "mean_list_cost_usd": 0.05381636666666666,
             "total_list_cost_usd": 2.2602873999999997
           }
-        }
+        },
+        "answer_input_cache_fraction": 0.022329587113294885
       },
       "5": {
         "n": 123,
@@ -410,11 +427,12 @@
         ],
         "unknown_cost_questions": 0,
         "response_accounted_cost_usd": 1.26229044,
-        "mean_cost_usd": 0.010262523902439024,
-        "total_cost_usd": 1.26229044,
-        "cost_per_correct_usd": 0.017531811666666664,
-        "mean_list_cost_usd": 0.010262523902439024,
-        "total_list_cost_usd": 1.26229044,
+        "response_accounted_list_cost_usd": 1.26229044,
+        "mean_cost_usd": 0.010262523902439027,
+        "total_cost_usd": 1.2622904400000003,
+        "cost_per_correct_usd": 0.01753181166666667,
+        "mean_list_cost_usd": 0.010262523902439027,
+        "total_list_cost_usd": 1.2622904400000003,
         "label": "Native Amazon Nova (Bedrock)",
         "failed_calls": 0,
         "no_letter": 0,
@@ -443,11 +461,12 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 0.05174076,
-            "mean_cost_usd": 0.001724692,
-            "total_cost_usd": 0.05174076,
-            "cost_per_correct_usd": 0.002587038,
-            "mean_list_cost_usd": 0.001724692,
-            "total_list_cost_usd": 0.05174076
+            "response_accounted_list_cost_usd": 0.05174076,
+            "mean_cost_usd": 0.0017246920000000003,
+            "total_cost_usd": 0.05174076000000001,
+            "cost_per_correct_usd": 0.0025870380000000007,
+            "mean_list_cost_usd": 0.0017246920000000003,
+            "total_list_cost_usd": 0.05174076000000001
           },
           "medium": {
             "n": 51,
@@ -463,11 +482,12 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 0.49401887999999994,
-            "mean_cost_usd": 0.009686644705882352,
-            "total_cost_usd": 0.49401887999999994,
-            "cost_per_correct_usd": 0.018296995555555553,
-            "mean_list_cost_usd": 0.009686644705882352,
-            "total_list_cost_usd": 0.49401887999999994
+            "response_accounted_list_cost_usd": 0.49401887999999994,
+            "mean_cost_usd": 0.009686644705882356,
+            "total_cost_usd": 0.4940188800000001,
+            "cost_per_correct_usd": 0.01829699555555556,
+            "mean_list_cost_usd": 0.009686644705882356,
+            "total_list_cost_usd": 0.4940188800000001
           },
           "long": {
             "n": 42,
@@ -483,13 +503,15 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 0.7165307999999999,
-            "mean_cost_usd": 0.01706025714285714,
-            "total_cost_usd": 0.7165307999999999,
-            "cost_per_correct_usd": 0.028661231999999995,
-            "mean_list_cost_usd": 0.01706025714285714,
-            "total_list_cost_usd": 0.7165307999999999
+            "response_accounted_list_cost_usd": 0.7165307999999999,
+            "mean_cost_usd": 0.017060257142857145,
+            "total_cost_usd": 0.7165308,
+            "cost_per_correct_usd": 0.028661232000000002,
+            "mean_list_cost_usd": 0.017060257142857145,
+            "total_list_cost_usd": 0.7165308
           }
-        }
+        },
+        "answer_input_cache_fraction": null
       }
     },
     "comparisons": [
@@ -506,8 +528,8 @@
         "b_only_correct": 9,
         "mcnemar_p": 0.266845703125,
         "paired_cluster_p": 0.2734375,
-        "cost_ratio_a_over_b": 1.5326662389875156,
-        "list_cost_ratio_a_over_b": 1.9417202277199823
+        "cost_ratio_a_over_b": 1.532666238987516,
+        "list_cost_ratio_a_over_b": 1.9417202277199812
       },
       {
         "a": "1",
@@ -522,8 +544,8 @@
         "b_only_correct": 14,
         "mcnemar_p": 1.0,
         "paired_cluster_p": 1.0,
-        "cost_ratio_a_over_b": 2.1378660094892132,
-        "list_cost_ratio_a_over_b": 3.7590947414074054
+        "cost_ratio_a_over_b": 2.1378660094892123,
+        "list_cost_ratio_a_over_b": 3.759094741407405
       },
       {
         "a": "1",
@@ -538,8 +560,8 @@
         "b_only_correct": 13,
         "mcnemar_p": 0.00040954145378258033,
         "paired_cluster_p": 0.0010966919362545013,
-        "cost_ratio_a_over_b": 5.925759138285164,
-        "list_cost_ratio_a_over_b": 10.442467266091313
+        "cost_ratio_a_over_b": 5.925759138285162,
+        "list_cost_ratio_a_over_b": 10.442467266091308
       },
       {
         "a": "1L",
@@ -554,8 +576,8 @@
         "b_only_correct": 9,
         "mcnemar_p": 0.4048728942871094,
         "paired_cluster_p": 0.49774169921875,
-        "cost_ratio_a_over_b": 1.3948672940701652,
-        "list_cost_ratio_a_over_b": 1.935961055430437
+        "cost_ratio_a_over_b": 1.3948672940701645,
+        "list_cost_ratio_a_over_b": 1.935961055430438
       },
       {
         "a": "1L",
@@ -570,8 +592,8 @@
         "b_only_correct": 12,
         "mcnemar_p": 3.3053764732060564e-05,
         "paired_cluster_p": 0.0001611746847629547,
-        "cost_ratio_a_over_b": 3.8663076066709343,
-        "list_cost_ratio_a_over_b": 5.377946378172681
+        "cost_ratio_a_over_b": 3.8663076066709325,
+        "list_cost_ratio_a_over_b": 5.377946378172682
       },
       {
         "a": "2",
@@ -587,7 +609,7 @@
         "mcnemar_p": 0.00015641720852954677,
         "paired_cluster_p": 0.00018061697483062744,
         "cost_ratio_a_over_b": 2.771810352932721,
-        "list_cost_ratio_a_over_b": 2.7779207454030947
+        "list_cost_ratio_a_over_b": 2.777920745403094
       }
     ],
     "inference": {
@@ -661,11 +683,12 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 7.48002911,
+            "response_accounted_list_cost_usd": 13.1814266,
             "mean_cost_usd": 0.06393187273504274,
             "total_cost_usd": 7.48002911,
             "cost_per_correct_usd": 0.07632682765306123,
-            "mean_list_cost_usd": 0.11266176581196581,
-            "total_list_cost_usd": 13.1814266,
+            "mean_list_cost_usd": 0.1126617658119658,
+            "total_list_cost_usd": 13.181426599999998,
             "label": "Native Gemini (full video)",
             "failed_calls": 0,
             "no_letter": 0,
@@ -694,9 +717,10 @@
                 ],
                 "unknown_cost_questions": 0,
                 "response_accounted_cost_usd": 0.28066741,
-                "mean_cost_usd": 0.009355580333333334,
-                "total_cost_usd": 0.28066741,
-                "cost_per_correct_usd": 0.009355580333333334,
+                "response_accounted_list_cost_usd": 0.3653935,
+                "mean_cost_usd": 0.009355580333333332,
+                "total_cost_usd": 0.28066740999999995,
+                "cost_per_correct_usd": 0.009355580333333332,
                 "mean_list_cost_usd": 0.012179783333333333,
                 "total_list_cost_usd": 0.3653935
               },
@@ -714,9 +738,10 @@
                 ],
                 "unknown_cost_questions": 0,
                 "response_accounted_cost_usd": 2.13517765,
-                "mean_cost_usd": 0.041866228431372554,
-                "total_cost_usd": 2.13517765,
-                "cost_per_correct_usd": 0.05618888552631579,
+                "response_accounted_list_cost_usd": 3.2153158,
+                "mean_cost_usd": 0.04186622843137256,
+                "total_cost_usd": 2.1351776500000006,
+                "cost_per_correct_usd": 0.056188885526315804,
                 "mean_list_cost_usd": 0.06304540784313725,
                 "total_list_cost_usd": 3.2153158
               },
@@ -734,6 +759,7 @@
                 ],
                 "unknown_cost_questions": 0,
                 "response_accounted_cost_usd": 5.06418405,
+                "response_accounted_list_cost_usd": 9.6007173,
                 "mean_cost_usd": 0.14067177916666665,
                 "total_cost_usd": 5.06418405,
                 "cost_per_correct_usd": 0.168806135,
@@ -756,11 +782,12 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 4.88040313,
-            "mean_cost_usd": 0.04171284726495727,
-            "total_cost_usd": 4.88040313,
-            "cost_per_correct_usd": 0.04738255466019418,
-            "mean_list_cost_usd": 0.058021626495726494,
-            "total_list_cost_usd": 6.7885303,
+            "response_accounted_list_cost_usd": 6.7885303,
+            "mean_cost_usd": 0.04171284726495726,
+            "total_cost_usd": 4.8804031299999995,
+            "cost_per_correct_usd": 0.04738255466019417,
+            "mean_list_cost_usd": 0.05802162649572652,
+            "total_list_cost_usd": 6.788530300000003,
             "label": "Native Gemini, low media resolution",
             "failed_calls": 0,
             "no_letter": 0,
@@ -789,11 +816,12 @@
                 ],
                 "unknown_cost_questions": 0,
                 "response_accounted_cost_usd": 0.15511059,
+                "response_accounted_list_cost_usd": 0.1872063,
                 "mean_cost_usd": 0.005170353,
                 "total_cost_usd": 0.15511059,
                 "cost_per_correct_usd": 0.005170353,
-                "mean_list_cost_usd": 0.0062402099999999995,
-                "total_list_cost_usd": 0.1872063
+                "mean_list_cost_usd": 0.00624021,
+                "total_list_cost_usd": 0.18720630000000002
               },
               "medium": {
                 "n": 51,
@@ -809,9 +837,10 @@
                 ],
                 "unknown_cost_questions": 0,
                 "response_accounted_cost_usd": 1.59627088,
-                "mean_cost_usd": 0.03129942901960785,
-                "total_cost_usd": 1.59627088,
-                "cost_per_correct_usd": 0.039906772,
+                "response_accounted_list_cost_usd": 1.7675317,
+                "mean_cost_usd": 0.03129942901960784,
+                "total_cost_usd": 1.5962708799999998,
+                "cost_per_correct_usd": 0.03990677199999999,
                 "mean_list_cost_usd": 0.034657484313725485,
                 "total_list_cost_usd": 1.7675317
               },
@@ -829,11 +858,12 @@
                 ],
                 "unknown_cost_questions": 0,
                 "response_accounted_cost_usd": 3.12902166,
-                "mean_cost_usd": 0.08691726833333333,
-                "total_cost_usd": 3.12902166,
-                "cost_per_correct_usd": 0.09481883818181817,
-                "mean_list_cost_usd": 0.13427200833333333,
-                "total_list_cost_usd": 4.8337923
+                "response_accounted_list_cost_usd": 4.8337923,
+                "mean_cost_usd": 0.0869172683333333,
+                "total_cost_usd": 3.129021659999999,
+                "cost_per_correct_usd": 0.09481883818181815,
+                "mean_list_cost_usd": 0.1342720083333333,
+                "total_list_cost_usd": 4.833792299999999
               }
             }
           },
@@ -851,9 +881,10 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 3.2169483199999998,
-            "mean_cost_usd": 0.027495284786324785,
-            "total_cost_usd": 3.2169483199999998,
-            "cost_per_correct_usd": 0.0342228544680851,
+            "response_accounted_list_cost_usd": 3.2241098,
+            "mean_cost_usd": 0.02749528478632479,
+            "total_cost_usd": 3.21694832,
+            "cost_per_correct_usd": 0.03422285446808511,
             "mean_list_cost_usd": 0.027556494017094018,
             "total_list_cost_usd": 3.2241098,
             "label": "Orchestrated Gemini (keyframes + ASR + synthesis)",
@@ -884,11 +915,12 @@
                 ],
                 "unknown_cost_questions": 0,
                 "response_accounted_cost_usd": 0.28199068,
+                "response_accounted_list_cost_usd": 0.28419279999999997,
                 "mean_cost_usd": 0.009399689333333332,
                 "total_cost_usd": 0.28199068,
                 "cost_per_correct_usd": 0.010845795384615385,
-                "mean_list_cost_usd": 0.009473093333333332,
-                "total_list_cost_usd": 0.28419279999999997
+                "mean_list_cost_usd": 0.009473093333333333,
+                "total_list_cost_usd": 0.2841928
               },
               "medium": {
                 "n": 51,
@@ -904,11 +936,12 @@
                 ],
                 "unknown_cost_questions": 0,
                 "response_accounted_cost_usd": 0.95710324,
-                "mean_cost_usd": 0.01876673019607843,
-                "total_cost_usd": 0.95710324,
-                "cost_per_correct_usd": 0.023927581,
-                "mean_list_cost_usd": 0.018863972549019607,
-                "total_list_cost_usd": 0.9620626
+                "response_accounted_list_cost_usd": 0.9620626,
+                "mean_cost_usd": 0.018766730196078434,
+                "total_cost_usd": 0.9571032400000001,
+                "cost_per_correct_usd": 0.023927581000000003,
+                "mean_list_cost_usd": 0.01886397254901961,
+                "total_list_cost_usd": 0.9620626000000001
               },
               "long": {
                 "n": 36,
@@ -924,11 +957,12 @@
                 ],
                 "unknown_cost_questions": 0,
                 "response_accounted_cost_usd": 1.9778544,
-                "mean_cost_usd": 0.0549404,
-                "total_cost_usd": 1.9778544,
-                "cost_per_correct_usd": 0.07063765714285715,
-                "mean_list_cost_usd": 0.0549404,
-                "total_list_cost_usd": 1.9778544
+                "response_accounted_list_cost_usd": 1.9778544,
+                "mean_cost_usd": 0.05494039999999999,
+                "total_cost_usd": 1.9778543999999998,
+                "cost_per_correct_usd": 0.07063765714285714,
+                "mean_list_cost_usd": 0.05494039999999999,
+                "total_list_cost_usd": 1.9778543999999998
               }
             }
           },
@@ -946,6 +980,7 @@
             ],
             "unknown_cost_questions": 0,
             "response_accounted_cost_usd": 1.15991922,
+            "response_accounted_list_cost_usd": 1.15991922,
             "mean_cost_usd": 0.009913839487179487,
             "total_cost_usd": 1.15991922,
             "cost_per_correct_usd": 0.017057635588235292,
@@ -979,11 +1014,12 @@
                 ],
                 "unknown_cost_questions": 0,
                 "response_accounted_cost_usd": 0.05174076,
-                "mean_cost_usd": 0.001724692,
-                "total_cost_usd": 0.05174076,
-                "cost_per_correct_usd": 0.002587038,
-                "mean_list_cost_usd": 0.001724692,
-                "total_list_cost_usd": 0.05174076
+                "response_accounted_list_cost_usd": 0.05174076,
+                "mean_cost_usd": 0.0017246920000000003,
+                "total_cost_usd": 0.05174076000000001,
+                "cost_per_correct_usd": 0.0025870380000000007,
+                "mean_list_cost_usd": 0.0017246920000000003,
+                "total_list_cost_usd": 0.05174076000000001
               },
               "medium": {
                 "n": 51,
@@ -999,11 +1035,12 @@
                 ],
                 "unknown_cost_questions": 0,
                 "response_accounted_cost_usd": 0.49401887999999994,
-                "mean_cost_usd": 0.009686644705882352,
-                "total_cost_usd": 0.49401887999999994,
-                "cost_per_correct_usd": 0.018296995555555553,
-                "mean_list_cost_usd": 0.009686644705882352,
-                "total_list_cost_usd": 0.49401887999999994
+                "response_accounted_list_cost_usd": 0.49401887999999994,
+                "mean_cost_usd": 0.009686644705882356,
+                "total_cost_usd": 0.4940188800000001,
+                "cost_per_correct_usd": 0.01829699555555556,
+                "mean_list_cost_usd": 0.009686644705882356,
+                "total_list_cost_usd": 0.4940188800000001
               },
               "long": {
                 "n": 36,
@@ -1019,11 +1056,12 @@
                 ],
                 "unknown_cost_questions": 0,
                 "response_accounted_cost_usd": 0.6141595799999999,
-                "mean_cost_usd": 0.01705998833333333,
-                "total_cost_usd": 0.6141595799999999,
-                "cost_per_correct_usd": 0.02924569428571428,
-                "mean_list_cost_usd": 0.01705998833333333,
-                "total_list_cost_usd": 0.6141595799999999
+                "response_accounted_list_cost_usd": 0.6141595799999999,
+                "mean_cost_usd": 0.017059988333333335,
+                "total_cost_usd": 0.61415958,
+                "cost_per_correct_usd": 0.029245694285714288,
+                "mean_list_cost_usd": 0.017059988333333335,
+                "total_list_cost_usd": 0.61415958
               }
             }
           }
@@ -1042,8 +1080,8 @@
             "b_only_correct": 9,
             "mcnemar_p": 0.266845703125,
             "paired_cluster_p": 0.2734375,
-            "cost_ratio_a_over_b": 1.5326662389875156,
-            "list_cost_ratio_a_over_b": 1.9417202277199823
+            "cost_ratio_a_over_b": 1.532666238987516,
+            "list_cost_ratio_a_over_b": 1.9417202277199812
           },
           {
             "a": "1",
@@ -1058,8 +1096,8 @@
             "b_only_correct": 10,
             "mcnemar_p": 0.5412561893463135,
             "paired_cluster_p": 0.56396484375,
-            "cost_ratio_a_over_b": 2.3251940553400003,
-            "list_cost_ratio_a_over_b": 4.088392585140866
+            "cost_ratio_a_over_b": 2.32519405534,
+            "list_cost_ratio_a_over_b": 4.088392585140865
           },
           {
             "a": "1",
@@ -1075,7 +1113,7 @@
             "mcnemar_p": 1.5221826110689562e-05,
             "paired_cluster_p": 1.93864107131958e-05,
             "cost_ratio_a_over_b": 6.448750034506714,
-            "list_cost_ratio_a_over_b": 11.364090164830618
+            "list_cost_ratio_a_over_b": 11.364090164830616
           },
           {
             "a": "1L",
@@ -1090,8 +1128,8 @@
             "b_only_correct": 5,
             "mcnemar_p": 0.063568115234375,
             "paired_cluster_p": 0.093505859375,
-            "cost_ratio_a_over_b": 1.5170909335590448,
-            "list_cost_ratio_a_over_b": 2.1055518332533216
+            "cost_ratio_a_over_b": 1.5170909335590443,
+            "list_cost_ratio_a_over_b": 2.1055518332533225
           },
           {
             "a": "1L",
@@ -1106,8 +1144,8 @@
             "b_only_correct": 8,
             "mcnemar_p": 6.867117736675254e-07,
             "paired_cluster_p": 1.3485550880432129e-06,
-            "cost_ratio_a_over_b": 4.207537081763332,
-            "list_cost_ratio_a_over_b": 5.852588855282526
+            "cost_ratio_a_over_b": 4.2075370817633315,
+            "list_cost_ratio_a_over_b": 5.852588855282529
           },
           {
             "a": "2",
@@ -1122,7 +1160,7 @@
             "b_only_correct": 9,
             "mcnemar_p": 0.00010604466626773501,
             "paired_cluster_p": 0.00011464953422546387,
-            "cost_ratio_a_over_b": 2.7734244458851194,
+            "cost_ratio_a_over_b": 2.77342444588512,
             "list_cost_ratio_a_over_b": 2.7795985654932074
           }
         ],

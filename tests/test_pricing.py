@@ -119,8 +119,10 @@ def test_fal_bills_started_five_second_blocks_of_the_trimmed_clip():
     assert fal_cost_impl(0.0, 120.0) == 0.0
 
 
-def test_sum_costs_skips_failed_calls():
-    assert sum_costs_impl([{'cost': 0.25}, {'cost': None}, {'cost': 0.5}]) == pytest.approx(0.75)
+def test_sum_costs_keeps_unknown_paid_attempts_unknown():
+    assert sum_costs_impl([{'cost': 0.25}, {'cost': None}, {'cost': 0.5}]) is None
+    assert sum_costs_impl([{'cost': 0.25}, {'cost': 0.0}, {'cost': 0.5}]) == pytest.approx(0.75)
+    assert sum_costs_impl([]) == 0.0
 
 
 def test_list_price_removes_the_cache_discount_and_parts_sum_to_cost():

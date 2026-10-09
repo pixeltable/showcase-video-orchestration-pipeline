@@ -44,3 +44,5 @@ jobs:
         run: python -m video_benchmark.local_demo
       - name: Render showcase HTML
         run: python scripts/render_showcase.py
+      - name: Check published result tables
+        run: python scripts/render_paper_tables.py --check

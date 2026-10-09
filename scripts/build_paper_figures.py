@@ -4,8 +4,8 @@
     python scripts/build_paper_figures.py [--pursuit results/paper/pursuit]
                                           [--videomme results/paper/videomme/<run>]
 
-Writes docs/paper/figures/*.png and docs/paper/numbers.json, the source of every number
-the paper cites.
+Writes docs/paper/figures/*.png and docs/paper/numbers.json, the analysis artifact for
+the result figures and repeated result tables.
 """
 
 from __future__ import annotations
@@ -227,6 +227,13 @@ def videomme_numbers(run_dir: Path) -> dict:
     # Reanalyse the fixed predictions with current inference; never relabel the original
     # provider calls as a new experiment or overwrite the committed run exports.
     summary = summarize(predictions, manifest['paths'])
+    for path, rec in summary['paths'].items():
+        usages = [row.get(f'p{path.lower()}_usage') or {} for row in predictions]
+        input_tokens = sum(usage.get('input_tokens', 0) for usage in usages)
+        rec['answer_input_cache_fraction'] = (
+            sum(usage.get('cached_tokens', 0) for usage in usages) / input_tokens
+            if input_tokens and any('cached_tokens' in usage for usage in usages) else None
+        )
     return {
         'summary': summary,
         'predictions': predictions,
@@ -449,7 +456,7 @@ def main() -> int:
     parser.add_argument('--videomme', type=Path, default=None)
     args = parser.parse_args()
     FIGURES.mkdir(parents=True, exist_ok=True)
-    numbers: dict = {'path_labels': PATH_LABELS}
+    numbers: dict = {'path_labels': PATH_LABELS, 'clip_check_count': len(CLIP_CHECKS)}
     pursuit_dirs = [d for d in args.pursuit if d.exists()]
     if pursuit_dirs:
         numbers['pursuit'] = pursuit_numbers(pursuit_dirs)
@@ -459,7 +466,7 @@ def main() -> int:
         vm_dir = _latest(vm_dir)
     if (vm_dir / 'summary.json').exists():
         vm = videomme_numbers(vm_dir)
-        numbers['videomme'] = {'run': vm_dir.name, **vm['summary']}
+        numbers['videomme'] = {'run': vm_dir.name, 'nova_model': vm['nova_model'], **vm['summary']}
         fig_videomme_accuracy(vm, FIGURES / 'videomme_accuracy.png')
         fig_videomme_cost_accuracy(vm, FIGURES / 'videomme_cost_accuracy.png')
         numbers['videomme']['cost_fits'] = cost_fits(vm)

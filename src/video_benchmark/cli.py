@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 
+from video_benchmark import config as configuration
 from video_benchmark.config import PROJECT_ROOT, load_config
 from video_benchmark.paths import PATH_LABELS, apply_skip_flags, parse_paths
 from video_benchmark.reporting import export_run
@@ -47,14 +48,15 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        config = load_config()
+        configuration.load_dotenv()
         paths = parse_paths(args.paths or os.environ.get('BENCHMARK_PATHS'))
+        paths = apply_skip_flags(
+            paths, skip_oss=args.skip_oss, skip_fal=args.skip_fal, skip_nova=args.skip_nova
+        )
+        config = load_config(paths)
     except ValueError as exc:
         print(f'Error: {exc}', file=sys.stderr)
         return 1
-    paths = apply_skip_flags(
-        paths, skip_oss=args.skip_oss, skip_fal=args.skip_fal, skip_nova=args.skip_nova
-    )
     if not paths:
         print('Error: no paths selected after --skip-* flags.', file=sys.stderr)
         return 1

@@ -180,3 +180,9 @@ def test_missing_caption_usage_does_not_export_a_partial_total_as_complete(
     assert entry['cost_usd'] is None and entry['list_cost_usd'] is None
     assert entry['stages']['captions']['unknown_cost_calls'] == 4
     assert entry['stages']['captions']['failed_calls'] == 0
+    syntheses = runner.table('syntheses')
+    assert syntheses.where(syntheses.run_id == run_id).select(
+        syntheses.gemini_total_cost
+    ).collect()[0]['gemini_total_cost'] is None
+    assert entry['response_accounted_cost_usd'] == pytest.approx(ASR_COST + SYNTHESIS_COST)
+    assert entry['response_accounted_list_cost_usd'] == pytest.approx(ASR_COST + SYNTHESIS_COST)

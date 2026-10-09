@@ -15,10 +15,11 @@ from typing import Any
 
 import pixeltable as pxt
 
+from video_benchmark.accounting import cost_totals
 from video_benchmark.config import BenchmarkConfig
 from video_benchmark.paths import parse_paths as parse_path_spec
 from video_benchmark.pricing import gemini_cost_impl, nova_cost_impl, uncached_usage_impl
-from video_benchmark.provenance import media_identity
+from video_benchmark.provenance import input_identity, media_identity
 from video_benchmark.reporting import add_usage
 from video_benchmark.runner import retry_column_once
 from video_benchmark.schema import PathPlan, plan_paths
@@ -144,17 +145,39 @@ def _table(name: str) -> pxt.Table:
     return pxt.get_table(f'{CATALOG_DIR}.{name}')
 
 
-def _insert_new(name: str, key: str, rows: list[dict[str, Any]], batch: int) -> None:
-    """Insert rows whose key is not in the table yet, `batch` at a time, retrying each failed
-    cell of the batch once."""
+class InputConflict(ValueError):
+    """An accepted ID has different inputs; resuming must never silently reuse its result."""
+
+
+def _new_rows(name: str, key: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Check every input before either table inserts; identical IDs resume without calls."""
     tbl = _table(name)
-    existing = {row[key] for row in tbl.select(getattr(tbl, key)).collect()}
-    new_rows = [row for row in rows if row[key] not in existing]
-    for start in range(0, len(new_rows), batch):
-        chunk = new_rows[start : start + batch]
+    existing = {row[key]: row['input_sha256'] for row in tbl.select(
+        getattr(tbl, key), tbl.input_sha256
+    ).collect()}
+    accepted: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if row[key] in existing and existing[row[key]] is None:
+            raise InputConflict(f'{name}.{key}={row[key]!r} has no saved input identity; '
+                                'export before rebuilding the catalog.')
+        identity = accepted.get(row[key], {}).get('input_sha256', existing.get(row[key]))
+        if identity is not None and identity != row['input_sha256']:
+            raise InputConflict(
+                f'{name}.{key}={row[key]!r} has different inputs (annotation revision, '
+                'media, or question). Use a new ID or export before rebuilding the catalog.'
+            )
+        accepted[row[key]] = row
+    return [row for identity, row in accepted.items() if identity not in existing]
+
+
+def _insert_new(name: str, key: str, rows: list[dict[str, Any]], batch: int) -> None:
+    """Insert already preflighted rows, retrying failed cells once per committed batch."""
+    tbl = _table(name)
+    for start in range(0, len(rows), batch):
+        chunk = rows[start : start + batch]
         print(
             f'Inserting {CATALOG_DIR}.{name} rows {start + 1}-{start + len(chunk)} '
-            f'of {len(new_rows)} ...',
+            f'of {len(rows)} ...',
             flush=True,
         )
         status = tbl.insert(chunk, on_error='ignore')
@@ -179,40 +202,30 @@ def run_videomme(
     plan = plan_paths(config, paths)
     apply_schema(config, plan)
     videos = unique_videos(questions)
-    _insert_new(
-        'videos',
-        'video_id',
-        [
-            {
-                'video_id': v['video_id'],
-                'video': downloads[v['video_id']],
-                'duration_bucket': v['duration'],
-                'domain': v['domain'],
-                'url': v['url'],
-            }
-            for v in videos
-        ],
-        VIDEO_BATCH,
-    )
-    _insert_new(
-        'questions',
-        'question_id',
-        [
-            {
-                'question_id': q['question_id'],
-                'video_id': q['video_id'],
-                'video': downloads[q['video_id']],
-                'duration_bucket': q['duration'],
-                'domain': q['domain'],
-                'task_type': q['task_type'],
-                'question': q['question'],
-                'options': q['options'],
-                'answer': q['answer'],
-            }
-            for q in questions
-        ],
-        QUESTION_BATCH,
-    )
+    media = {v['video_id']: media_identity(downloads[v['video_id']]) for v in videos}
+    video_rows = [{
+        'video_id': v['video_id'], 'video': downloads[v['video_id']],
+        'media_sha256': media[v['video_id']]['sha256'],
+        'media_bytes': media[v['video_id']]['bytes'], 'annotation_revision': HF_REVISION,
+        'duration_bucket': v['duration'], 'domain': v['domain'], 'url': v['url'],
+    } for v in videos]
+    question_rows = [{
+        'question_id': q['question_id'], 'video_id': q['video_id'],
+        'video': downloads[q['video_id']], 'annotation_revision': HF_REVISION,
+        'duration_bucket': q['duration'], 'domain': q['domain'], 'task_type': q['task_type'],
+        'question': q['question'], 'options': q['options'], 'answer': q['answer'],
+    } for q in questions]
+    for row in video_rows + question_rows:
+        # Equivalent paths to the same bytes have the same identity. Store the identity at
+        # acceptance: rehashing the old path later cannot detect same-path replacement.
+        row['input_sha256'] = input_identity({
+            **{k: v for k, v in row.items() if k != 'video'},
+            'media_sha256': media[row['video_id']]['sha256'],
+        })
+    new_videos = _new_rows('videos', 'video_id', video_rows)
+    new_questions = _new_rows('questions', 'question_id', question_rows)
+    _insert_new('videos', 'video_id', new_videos, VIDEO_BATCH)
+    _insert_new('questions', 'question_id', new_questions, QUESTION_BATCH)
     evidence = collect_videos(plan, [v['video_id'] for v in videos], config.gemini_model)
     predictions = collect_predictions(plan, [q['question_id'] for q in questions], evidence, config)
     return predictions, evidence
@@ -242,7 +255,8 @@ def collect_predictions(
     q = _table('questions')
     select: dict[str, Any] = {
         name: getattr(q, name)
-        for name in ('question_id', 'video_id', 'duration_bucket', 'domain', 'task_type', 'answer')
+        for name in ('question_id', 'video_id', 'duration_bucket', 'domain', 'task_type', 'answer',
+                     'input_sha256', 'annotation_revision')
     }
     for path in plan.enabled():
         letter, correct, cost, call = PATH_COLUMNS[path]
@@ -261,41 +275,42 @@ def collect_predictions(
             select[field(path, 'usage_error')] = getattr(q, USAGE[path]).errormsg
     records = list(q.where(q.question_id.isin(question_ids)).select(**select).collect())
     by_video = {v['video_id']: v for v in videos}
-    shared_list = {
-        vid: {
-            '2': v.get('caption_list_cost', 0.0) + v.get('asr_list_cost', 0.0),
-            '3': v.get('asr_list_cost', 0.0),
-        }
-        for vid, v in by_video.items()
-    }
     per_video = Counter(row['video_id'] for row in records)
     for row in records:
         vid = row['video_id']
         n = per_video[vid]
         row['duration_sec'] = by_video.get(vid, {}).get('duration_sec')
         for path in plan.enabled():
-            shared = (row.pop(field(path, 'video_shared_cost'), None) or 0.0) / n
+            row.pop(field(path, 'video_shared_cost'), None)
             shared_stages = ('caption', 'asr') if path == '2' else ('asr',) if path == '3' else ()
-            shared_known = all(
-                not by_video[vid].get(f'{stage}_unknown_cost', 0) for stage in shared_stages
+            shared = cost_totals(by_video[vid][f'{stage}_cost'] for stage in shared_stages)
+            list_shared = cost_totals(
+                by_video[vid][f'{stage}_list_cost'] for stage in shared_stages
             )
             call_cost = row.get(field(path, 'call_cost')) if path != '3' else 0.0
-            row[field(path, 'shared_cost')] = shared if shared_known else None
-            row[field(path, 'cost')] = (
-                call_cost + shared if call_cost is not None and shared_known else None
-            )
+            shared_cost = shared.total / n if shared.total is not None else None
+            row[field(path, 'shared_cost')] = shared_cost
+            row[field(path, 'cost')] = cost_totals([call_cost, shared_cost]).total
             row[field(path, 'accounting_error')] = (
                 row.get(field(path, 'usage_error')) or row.get(field(path, 'cost_error'))
-                or ('Shared evidence cost is unknown' if not shared_known else None)
-            )
-            list_shared = (
-                shared_list.get(vid, {}).get(path, 0.0) / n if path in SHARED_COST else 0.0
+                or ('Shared evidence cost is unknown' if shared.unknown else None)
             )
             list_call = (
                 _list_cost(path, row.get(field(path, 'usage')), config) if path != '3' else 0.0
             )
-            row[field(path, 'list_cost')] = (
-                list_call + list_shared if list_call is not None and shared_known else None
+            row[field(path, 'list_cost')] = cost_totals([
+                list_call, list_shared.total / n if list_shared.total is not None else None
+            ]).total
+            row[field(path, 'response_accounted_cost')] = (
+                cost_totals([call_cost]).known + sum(
+                    by_video[vid][f'{stage}_response_accounted_cost'] for stage in shared_stages
+                ) / n
+            )
+            row[field(path, 'response_accounted_list_cost')] = (
+                cost_totals([list_call]).known + sum(
+                    by_video[vid][f'{stage}_response_accounted_list_cost']
+                    for stage in shared_stages
+                ) / n
             )
     return sorted(records, key=lambda row: row['question_id'])
 
@@ -306,11 +321,12 @@ def collect_videos(plan: PathPlan, video_ids: list[str], model: str) -> list[dic
     """
     v = _table('videos')
     rows = v.where(v.video_id.isin(video_ids)).select(
-        v.video_id, v.duration_bucket, v.duration_sec, media_path=v.video.localpath
+        v.video_id, v.duration_bucket, v.duration_sec, v.input_sha256, v.annotation_revision,
+        v.media_sha256, v.media_bytes,
     )
     records = {row['video_id']: dict(row) for row in rows.collect()}
     for rec in records.values():
-        rec['media_identity'] = media_identity(rec.pop('media_path'))
+        rec['media_identity'] = {'sha256': rec.pop('media_sha256'), 'bytes': rec.pop('media_bytes')}
     stages = []
     if plan.modular:
         ac = _table('audio_chunks')
@@ -324,7 +340,9 @@ def collect_videos(plan: PathPlan, video_ids: list[str], model: str) -> list[dic
         for rec in records.values():
             rec.update(
                 {f'{stage}_{k}': 0 for k in ('calls', 'failed', 'empty', 'unknown_cost')}
-                | {f'{stage}_cost': 0.0}
+                | {f'{stage}_response_accounted_cost': 0.0,
+                   f'{stage}_response_accounted_list_cost': 0.0,
+                   f'{stage}_unknown_list_cost': 0}
             )
             rec[f'{stage}_usage'] = {}
         response = getattr(tbl, f'gemini_{"caption" if stage == "caption" else "asr"}_response')
@@ -336,13 +354,19 @@ def collect_videos(plan: PathPlan, video_ids: list[str], model: str) -> list[dic
             rec = records[row['video_id']]
             rec[f'{stage}_calls'] += 1
             rec[f'{stage}_failed'] += bool(row['error'])
-            rec[f'{stage}_unknown_cost'] += row['cost'] is None
+            costs = cost_totals([row['cost']])
+            listed = cost_totals([gemini_cost_impl(uncached_usage_impl(row['usage']), model)
+                                 if row['usage'] else None])
+            rec[f'{stage}_unknown_cost'] += costs.unknown
+            rec[f'{stage}_unknown_list_cost'] += listed.unknown
             # Billed but no text: a recitation or safety stop, which raises no error.
             rec[f'{stage}_empty'] += row['cost'] is not None and not row['text']
-            rec[f'{stage}_cost'] += row['cost'] or 0.0
+            rec[f'{stage}_response_accounted_cost'] += costs.known
+            rec[f'{stage}_response_accounted_list_cost'] += listed.known
             add_usage(rec[f'{stage}_usage'], row['usage'])
         for rec in records.values():
-            # Cost is linear in token counts, so pricing the summed usage prices every call.
-            usage = uncached_usage_impl(rec[f'{stage}_usage'])
-            rec[f'{stage}_list_cost'] = gemini_cost_impl(usage, model) if usage else 0.0
+            rec[f'{stage}_cost'] = (None if rec[f'{stage}_unknown_cost'] else
+                                   rec[f'{stage}_response_accounted_cost'])
+            rec[f'{stage}_list_cost'] = (None if rec[f'{stage}_unknown_list_cost'] else
+                                        rec[f'{stage}_response_accounted_list_cost'])
     return sorted(records.values(), key=lambda rec: rec['video_id'])

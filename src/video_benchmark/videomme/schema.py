@@ -35,6 +35,7 @@ from video_benchmark.config import (
 from video_benchmark.schema import PathPlan, apply_models
 from video_benchmark.videomme import prompts as mcq
 from video_benchmark.videomme import scoring
+from video_benchmark.videomme.sample import HF_REVISION
 
 CATALOG_DIR = 'videomme'
 # The local 7B synthesis model has an 8K-token context; its evidence is windowed to fit.
@@ -45,12 +46,17 @@ def build_models(config: BenchmarkConfig, plan: PathPlan) -> type:
     TableModel = pxt.model_base()
     model = config.gemini_model
     definition = provenance.pipeline_identity(
-        config_manifest_dict(config), plan.enabled(), pxt.__version__
+        {**config_manifest_dict(config), 'annotation_revision': HF_REVISION},
+        plan.enabled(), pxt.__version__
     )
 
     class Videos(TableModel, name='videos'):
         video_id = pxt.Column(type=pxt.String, primary_key=True)
         video: pxt.Video
+        input_sha256: pxt.String
+        media_sha256: pxt.String
+        media_bytes: pxt.Int
+        annotation_revision: pxt.String
         duration_bucket: pxt.String
         domain: pxt.String
         url: pxt.String
@@ -127,9 +133,7 @@ def build_models(config: BenchmarkConfig, plan: PathPlan) -> type:
             @pxt.query
             def gemini_frame_rows(video_id: str):
                 return (
-                    Keyframes.where(
-                        (Keyframes.video_id == video_id) & (Keyframes.gemini_caption != None)  # noqa: E711
-                    )
+                    Keyframes.where(Keyframes.video_id == video_id)
                     .order_by(Keyframes.position_sec)
                     .select(
                         position_sec=Keyframes.position_sec,
@@ -156,6 +160,8 @@ def build_models(config: BenchmarkConfig, plan: PathPlan) -> type:
 
     class Questions(TableModel, name='questions'):
         question_id = pxt.Column(type=pxt.String, primary_key=True)
+        input_sha256: pxt.String
+        annotation_revision: pxt.String
         video_id: pxt.String
         video: pxt.Video
         duration_bucket: pxt.String

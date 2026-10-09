@@ -1,8 +1,24 @@
 # Workflow
 
-Every path answers the same question about the same video. The paths live in one Pixeltable catalog per benchmark, declared as a `TableModel` graph and applied with a single `update_all()`. Each stage is a computed column: insert a row and Pixeltable runs the stages, stores every intermediate result, and records failed calls per cell.
+Own the source media, preparation, and decision rules in a Pixeltable `TableModel` graph. Insert a row and computed columns derive typed outputs; request rows can query stored preparation instead of running it again.
 
-Start with `run-media-demo` for a generated local clip and real video, image, and audio transforms without provider calls. The benchmark graphs extend that same SDK model with response JSON, usage, evidence selection, and answer columns. Importing schema modules does not mutate the catalog.
+## Local ownership lesson
+
+Run `run-media-demo`. It generates a four-second clip, extracts audio, splits it into two segments, and creates four timestamped thumbnails. A local UDF measures each frame's brightness once. A computed eligibility column applies a threshold stored on the clip, while two request rows materialize queries of eligible frames.
+
+| Operation | Eligible frames | First request snapshot | Second request snapshot | Frame preparations |
+|-----------|----------------:|-----------------------:|------------------------:|-------------------:|
+| Insert clip and two requests, threshold 0 | 4 | 4 | 4 | 4 |
+| Update threshold to 128 | 2 | 4 | 4 | 4 |
+| Recompute first request's evidence | 2 | 2 | 4 | 4 |
+
+The assertions verify the unchanged source bytes, thumbnail contents, audio segment contents, and preparation call count. Only the first request's evidence and downstream decision refresh. The second snapshot remains available for inspection. The catalog is temporary and no provider is called. The graph and operations are in [`local_demo.py`](../src/video_benchmark/local_demo.py); its two deterministic UDFs live in [`local_demo_rules.py`](../src/video_benchmark/local_demo_rules.py), an importable module as required by Pixeltable.
+
+Business logic and refresh timing are application choices. A computed column's ordinary dependencies update with their source; a query-backed lookup of another table is a stored snapshot and requires deliberate refresh.
+
+## Optional provider and research graphs
+
+Each benchmark path answers the same question about the same video. The benchmark graphs extend the local SDK pattern with response JSON, usage, evidence selection, and answer columns. They live in one frozen catalog per benchmark, applied with a single `update_all()`. Importing schema modules does not mutate the catalog. Select paths with `--paths`; the older `--skip-*` switches remain compatibility aliases. Configuration validates effective selected settings: unused frame/local-model knobs and credential-disabled Nova settings cannot block a native run. Video-MME Path 3 uses Gemini ASR and therefore requires a valid Gemini model and credentials.
 
 | Path | Mechanism | Model calls per video | Cost column |
 |------|-----------|-----------------------|-------------|
@@ -65,6 +81,8 @@ flowchart LR
 
 Captions and the transcript are computed once per video and reused by that video's questions; only the answer call is per question. Video-MME captions are query-agnostic; Pursuit captions are conditioned on the run's question. The export splits each video's evidence cost (`orch_shared_cost`) evenly across its questions in the exported sample. `run-videomme` inserts missing rows, one video or six questions per insert. Completed batches survive interruption, and rerunning identical rows makes no new calls. A paid call interrupted before its insert commits can run again without its earlier usage being recorded.
 
+Every invocation preflights all proposed video and question identities before inserting either table. Accepted rows store the annotation revision, canonical input SHA-256, and the video's original bytes SHA-256 and size. Reusing an ID with different media, revision, question, options, answer, or video link is rejected; replacing bytes at the same path also conflicts. Another path to identical bytes is accepted. A new question for an unchanged video runs only answer stages. An existing row without a saved identity cannot be treated as identical. The frozen Video-MME definition also includes the annotation revision. These safeguards require rebuilding older catalogs after exporting their runs; they do not rewrite old results.
+
 ## Cost accounting
 
 Cost is computed from the token counts each response reports, never from text length:
@@ -76,6 +94,8 @@ Cost is computed from the token counts each response reports, never from text le
 Rates live in [`src/video_benchmark/pricing.py`](../src/video_benchmark/pricing.py) with their snapshot date. Where responses contain usage, it is stored next to cost so it can be re-priced without another model call. Models must have a known rate before their costs can be computed.
 
 These are **response-accounted estimates**, not invoice totals. Historical fields named `billed`/`cost_usd` apply cached-input discounts to returned usage. Retries, interruption before commit, SDK parsing failures, and missing usage can leave paid attempts unrecorded. Local GPU/CPU time, storage, download/egress, taxes, and service charges are excluded. fal is a duration-based estimate because it supplies no token usage. A missing usage response or ambiguous mixed-modality cache allocation produces an accounting error and `null` cost; it is never called free. New reports count unknown-cost questions separately and expose known partial subtotals as `response_accounted_cost_usd`.
+
+The shared accounting policy keeps complete totals nullable while retaining every known response cost, including when another stage or answer has unknown usage. Pursuit exports carry `response_accounted_cost_usd` and `response_accounted_list_cost_usd`. Video-MME predictions carry `p*_response_accounted_cost` and `p*_response_accounted_list_cost`; their summaries use the same `*_usd` fields as Pursuit. Known shared preparation is divided across that video's questions in the current export, so summing predictions accounts for it once. Per-video records distinguish nullable stage totals from known recorded subtotals. Archived exports without the new subtotal fields fall back to their recorded complete costs; no old export is repriced or rewritten by this change. Reports label a partial subtotal explicitly and keep the complete total unknown.
 
 All accuracy and accuracy-difference intervals resample entire videos. Paired tests exchange each video's path labels together, preserving dependence among its questions; their p-values are exploratory and unadjusted. Question-level Wilson intervals and McNemar p-values remain labeled diagnostics. Percentile bootstrap intervals can collapse at all-right/all-wrong boundaries on small strata; they do not establish certainty. Missing answers count as wrong on every attempted question. The saved benchmark is a local availability sample and has no equivalence-test design.
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sys
 
+import pytest
+
 from video_benchmark import cli
 from video_benchmark.videomme import cli as vm_cli
 
@@ -32,3 +34,33 @@ def test_videomme_credentials_are_checked_before_downloading(monkeypatch):
         AssertionError('must not download')
     ))
     assert vm_cli.main() == 1
+
+
+@pytest.mark.parametrize('entrypoint,argv,env', [
+    (cli, ['run-benchmark', '--paths', '2', '--reset'], ('FRAME_SELECT_BUDGET', '0')),
+    (cli, ['run-benchmark', '--paths', '3', '--reset'], ('OSS_ASR', 'invalid')),
+    (vm_cli, ['run-videomme', '--paths', '3', '--reset'], ('GEMINI_MODEL', 'unpriced')),
+    (vm_cli, ['run-videomme', '--paths', '2', '--reset'], ('VIDEOME_FRAME_SELECT_BUDGET', '0')),
+])
+def test_active_configuration_failure_has_no_side_effects(monkeypatch, entrypoint, argv, env):
+    monkeypatch.setattr(sys, 'argv', argv)
+    monkeypatch.setenv(*env)
+    side_effects = []
+    for name in ('reset_catalog', 'ensure_sample_video', 'prepare_sample', 'apply_schema'):
+        if hasattr(entrypoint, name):
+            monkeypatch.setattr(entrypoint, name, lambda *args, **kwargs: side_effects.append(True))
+    assert entrypoint.main() == 1 and side_effects == []
+
+
+def test_skip_alias_removes_path_before_validation(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, 'argv', ['run-benchmark', '--paths', '1,3', '--skip-oss',
+                                      '--video', str(tmp_path / 'missing.mp4')])
+    monkeypatch.setenv('OSS_ASR', 'invalid')
+    seen = []
+    monkeypatch.setattr(cli, 'ensure_sample_video', lambda *args: seen.append(True) or (
+        tmp_path / 'missing.mp4'
+    ))
+    monkeypatch.setattr(cli, 'apply_schema', lambda *args: (_ for _ in ()).throw(
+        cli.CatalogSchemaMismatch('fixture stop before insert')
+    ))
+    assert cli.main() == 1 and seen == [True]

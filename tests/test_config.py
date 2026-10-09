@@ -29,6 +29,8 @@ KNOBS = (
     'AWS_PROFILE',
     'AWS_DEFAULT_PROFILE',
     'AWS_BEARER_TOKEN_BEDROCK',
+    'SCENE_DETECT_THRESHOLD', 'WHISPERX_NUM_SPEAKERS', 'WHISPERX_MIN_SPEAKERS',
+    'VIDEOME_VISION_SAMPLE_KEYFRAMES', 'VIDEOME_FRAME_SELECT_BUDGET',
 )
 
 
@@ -108,3 +110,54 @@ def test_nova_supports_profile_credentials_and_rejects_unpriced_models(clean_env
     clean_env.setenv('NOVA_MODEL_ID', 'amazon.future-model')
     with pytest.raises(ValueError, match='NOVA_MODEL_ID'):
         load_config()
+
+
+def test_native_ignores_all_inactive_media_and_provider_knobs(clean_env):
+    for name in ('VISION_SAMPLE_KEYFRAMES', 'FRAME_SELECT_BUDGET', 'GEMINI_SYNTH_MAX_IMAGES',
+                 'SCENE_DETECT_THRESHOLD', 'OSS_ASR', 'OSS_SYNTH_MAX_TOKENS',
+                 'WHISPERX_MIN_SPEAKERS', 'WHISPERX_NUM_SPEAKERS', 'NOVA_MODEL_ID'):
+        clean_env.setenv(name, 'invalid')
+    clean_env.setenv('AWS_PROFILE', 'incidental-profile')
+    cfg = load_config({'1'})
+    assert cfg.vision_sample_keyframes == 24 and not cfg.enable_nova
+    clean_env.setenv('HF_TOKEN', 'incidental-token')
+    assert load_config({'1'}) == cfg  # inactive settings also keep the frozen definition stable
+
+
+def test_nova_only_ignores_gemini_and_local_settings(clean_env):
+    clean_env.setenv('AWS_PROFILE', 'profile')
+    for name in ('GEMINI_MODEL', 'OSS_ASR', 'VISION_SAMPLE_KEYFRAMES'):
+        clean_env.setenv(name, 'invalid')
+    assert load_config({'5'}).enable_nova
+
+
+def test_nova_without_credentials_cannot_gate_a_native_run(clean_env):
+    clean_env.setenv('NOVA_MODEL_ID', 'unpriced-unused')
+    cfg = load_config({'1', '5'})
+    assert not cfg.enable_nova and cfg.nova_model_id == 'amazon.nova-pro-v1:0'
+
+
+@pytest.mark.parametrize('asr', ['whisper', 'whisperx', 'gemini'])
+def test_local_gemini_price_validation_matches_effective_asr(clean_env, asr):
+    clean_env.setenv('OSS_ASR', asr)
+    clean_env.setenv('HF_TOKEN', 'fixture')
+    clean_env.setenv('GEMINI_MODEL', 'unpriced')
+    if asr == 'gemini':
+        with pytest.raises(ValueError, match='no price'):
+            load_config({'3'})
+    else:
+        assert load_config({'3'}).oss_asr == asr
+
+
+def test_videomme_validates_forced_gemini_asr_and_effective_frame_settings(clean_env):
+    clean_env.setenv('OSS_ASR', 'invalid-but-overridden')
+    clean_env.setenv('GEMINI_MODEL', 'unpriced')
+    with pytest.raises(ValueError, match='no price'):
+        load_config({'3'}, videomme=True)
+    clean_env.setenv('GEMINI_MODEL', 'gemini-2.5-flash')
+    clean_env.setenv('VISION_SAMPLE_KEYFRAMES', 'invalid-but-overridden')
+    assert load_config({'3'}, videomme=True).vision_sample_keyframes == 32
+    clean_env.setenv('VIDEOME_FRAME_SELECT_BUDGET', '0')
+    with pytest.raises(ValueError, match='at least 1'):
+        load_config({'2'}, videomme=True)
+    assert load_config({'1'}, videomme=True).frame_select_budget == 24

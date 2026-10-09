@@ -6,7 +6,9 @@
 
 Keep your media, intermediate results, provider responses, and business logic in a [Pixeltable](https://github.com/pixeltable/pixeltable) catalog. Declare video-to-frame and video-to-audio transformations with the SDK, add model calls as computed columns, and inspect or reuse the evidence with ordinary queries.
 
-This repository demonstrates that architecture with a measurable question: answer a video question by sending the whole video to Gemini (**native**), or by captioning keyframes, transcribing audio, and answering from saved evidence (**orchestrated**). The same Gemini model writes both answers. Alternative local models, fal, and Bedrock make the provider boundaries visible.
+Start with a local media review rule: prepare frames and audio once, reuse the frames for two requests, change the rule, and deliberately refresh one request. The SDK graph makes the data and each decision inspectable.
+
+The optional benchmark then asks a measurable question: answer a video question by sending the whole video to Gemini (**native**), or by captioning keyframes, transcribing audio, and answering from saved evidence (**orchestrated**). The same Gemini model writes both answers. Local models, fal, and Bedrock are additional comparison paths.
 
 **Validated SDK:** Pixeltable **0.7.15**, the latest stable PyPI release checked on 2026-10-08. The committed experiments used 0.7.11; upgrading the application does not turn those recordings into new experiments.
 
@@ -22,7 +24,18 @@ pip install -e .
 run-media-demo
 ```
 
-This generates a four-second clip, applies a real `TableModel` graph, and inserts one video row. Pixeltable extracts audio, emits four timestamped frames, resizes their thumbnails, and splits the audio into segments. It prints the results and removes its temporary catalog. No download, credentials, or model call is needed. Read the complete example in [`local_demo.py`](src/video_benchmark/local_demo.py).
+This generates a four-second clip, applies a real `TableModel` graph, and inserts one video row. Pixeltable extracts audio, emits four timestamped frames, resizes their thumbnails, and splits the audio into segments. A deterministic brightness rule selects frames for review; two request rows query the same prepared frames.
+
+The demo changes the rule from accepting every frame to accepting only bright frames. Both requests retain their original four-frame evidence until the first request is explicitly refreshed; its result then uses two frames while the second still uses four. Look for `prepared_frames: 4`, `review_evaluations: ["first", "second", "first"]`, and `source_and_preparation_unchanged: true` in the output. The demo verifies source, thumbnail, and audio hashes before removing its temporary catalog. No download, credentials, or model call is needed.
+
+The two operations that express the policy are ordinary SDK calls:
+
+```python
+clips.update({'minimum_brightness': 128.0}, where=clips.clip_id == 'demo')
+requests.recompute_columns('evidence', where=requests.request_id == 'first')
+```
+
+Read the complete graph and assertions in [`local_demo.py`](src/video_benchmark/local_demo.py), then change its review rule. Query-backed evidence is a stored snapshot: the application decides when to refresh it.
 
 ## What you control
 
@@ -31,32 +44,40 @@ This generates a four-second clip, applies a real `TableModel` graph, and insert
 | Media and intermediate data | Typed `Video`, `Image`, and `Audio` columns, iterator views, stored JSON responses |
 | Transformations and business rules | Declared computed columns; frame selection and evidence formatting in [`evidence.py`](src/video_benchmark/evidence.py) |
 | Model and API choices | Provider expressions in the graph; adapters for capabilities the built-ins do not expose |
-| Reuse | Video-MME prepares captions and transcripts once per video and queries them for every question |
+| Reuse and refresh | The local demo shares frame preparation between requests; Video-MME shares captions and transcripts between questions. Refresh stored query results deliberately. |
 | Failures | Per-cell errors, a bounded retry for transient failures, and explicit empty-output counts |
 | Experiment identity | Definition digest, source and media hashes, package versions, and pinned annotation revision |
 
-The full graph is in [`schema.py`](src/video_benchmark/schema.py). Importing it declares functions; applying the models creates the catalog. The runner inserts source rows before synthesis rows so query-backed evidence is ready. See [workflow and extension points](docs/WORKFLOW.md) and the [in-depth review](docs/REVIEW.md).
+The local graph is in [`local_demo.py`](src/video_benchmark/local_demo.py); the optional benchmark graphs are in [`schema.py`](src/video_benchmark/schema.py) and [`videomme/schema.py`](src/video_benchmark/videomme/schema.py). Importing these modules declares functions; applying the models creates the catalog. Source rows are inserted before request rows so query-backed evidence is ready. See [workflow and extension points](docs/WORKFLOW.md) and the [in-depth review](docs/REVIEW.md).
 
-## Results
+## Recorded research results
 
 On a 255-second interview clip (mean of six runs, list price, `gemini-2.5-flash` rates of 2026-09-28):
 
-| Path | What the model sees | Cost per answer | Clip phrase checks |
-|------|---------------------|----------------:|----------------------:|
-| 1 Native | the whole video | $0.0376 | 5/5 |
-| 1L Native, low media resolution | the whole video, 71 instead of 263 tokens per second | $0.0219 | 5/5 |
-| 2 Orchestrated | 24 keyframe captions, a transcript, 8 keyframe images | $0.0308 | 5/5 |
-| 4 fal video-understanding | the first 120 seconds | $0.2400 | 2/5 |
-| 5 Amazon Nova Pro | the whole video | $0.0600 | 1/5 |
+<!-- results:readme-clip:start -->
+
+| Path | List price per answer | Clip phrase checks |
+| --- | ---: | ---: |
+| 1 Native | $0.0376 | 5/5 |
+| 1L Native, low resolution | $0.0219 | 5/5 |
+| 2 Orchestrated | $0.0308 | 5/5 |
+| 4 fal video-understanding | $0.2400 | 2/5 |
+| 5 Amazon Nova Pro | $0.0600 | 1/5 |
+
+<!-- results:readme-clip:end -->
 
 On 123 Video-MME questions (41 videos, 12.2 hours, three questions per video):
 
+<!-- results:readme-videomme:start -->
+
 | Path | Accuracy [95% CI] | List price per question | Response-accounted per question |
-|------|------------------:|------------------------:|--------------------:|
+| --- | ---: | ---: | ---: |
 | 1 Native | 79.7% [70.7, 87.8] | $0.107 | $0.061 |
-| 1L Native, low media resolution | 83.7% [74.8, 91.1] | $0.055 | $0.040 |
+| 1L Native, low resolution | 83.7% [74.8, 91.1] | $0.055 | $0.040 |
 | 2 Orchestrated | 79.7% [71.5, 87.0] | $0.029 | $0.028 |
 | 5 Amazon Nova Lite | 58.5% [50.4, 66.7] | $0.010 | $0.010 |
+
+<!-- results:readme-videomme:end -->
 
 Intervals resample whole videos; paired video-level tests do not resolve the Gemini differences on this sample (p >= 0.27). That does not establish equivalent accuracy. The sample comprises locally available Video-MME videos, and the five clip checks above are phrase heuristics, not a general quality score. Gemini refused both native settings on 2 of the 41 videos; the orchestrated path returned an answer for every question. Exports: [results/paper/](results/paper/).
 
@@ -66,7 +87,7 @@ Orchestration replaces video input tokens ($0.30 per million) with generated cap
 
 > **Correction.** An earlier version of this repository reported that orchestration cost 66% less than native ($0.039 vs $0.114). That figure came from a flat $1.50 per million token price, which overcharged video input fivefold, and from uncounted thinking tokens. Section 3 of the paper lists every correction.
 
-## Run the provider comparison (Paths 1, 1L, 2)
+## Run an optional provider comparison (Paths 1, 1L, 2)
 
 ```bash
 cp .env.example .env       # set GOOGLE_API_KEY
@@ -75,7 +96,7 @@ run-benchmark --paths 1,1L,2
 
 After the base installation above, this downloads the sample clip, builds the `video_benchmarking` catalog, and writes `results/<run_id>/`: `REPORT.md`, `summary.json` (answers, usage, and response-accounted cost), `keyframes.csv`, and `manifest.json` (config, prices, versions, source and media identities). The recorded default comparison was about $0.09 at the documented rates; new runs make paid API calls and their cost can vary.
 
-## Paths
+## Optional provider paths
 
 | Path | Mechanism | Install |
 |------|-----------|---------|
@@ -92,7 +113,7 @@ run-benchmark --paths 1,1L,2 --repeats 5          # five independent runs
 run-benchmark --paths 3 --reset                   # a catalog is built for one path set
 ```
 
-A benchmark catalog freezes paths, configuration, computation-source digest, and SDK version. Changing these asks for `--reset`, which drops that benchmark catalog but keeps `results/`. Export runs before resetting. This is an experiment isolation policy; applications can instead use Pixeltable schema migration and selective recomputation.
+A benchmark catalog freezes paths, effective configuration, computation-source digest, and SDK version. Select paths with `--paths`; unused environment settings do not gate a run. Changing the frozen definition asks for `--reset`, which drops that benchmark catalog but keeps `results/`. Export runs before resetting. This is an experiment isolation policy; applications can instead use Pixeltable schema migration and selective recomputation.
 
 ## Video-MME
 
@@ -102,9 +123,9 @@ run-videomme --n 30 --paths 1,1L,2          # stratified sample; downloads video
 run-videomme --local-only --n 123 --paths 1,1L,2,5
 ```
 
-Questions share their video's captions and transcript, so orchestration prepares evidence once per video. `run-videomme` inserts only missing rows: completed inserts survive an interrupted run and rerunning the same sample makes no additional calls. Persisted failures need explicit recomputation; see [failure recovery](docs/WORKFLOW.md#failures-and-changes). Exports include accuracy and difference intervals clustered by video, paired video-level tests, costs, predictions, and evidence records with media hashes. Annotation revision is pinned in [`sample.py`](src/video_benchmark/videomme/sample.py).
+Questions share their video's captions and transcript, so orchestration prepares evidence once per video. `run-videomme` checks all proposed input identities before inserting any rows: an existing ID with changed media bytes, annotation revision, question, options, or answer is rejected. Identical inputs resume without new calls; adding a question to the same video runs only its answer stage. Interrupted calls that did not commit can be repeated. Persisted failures need explicit recomputation; see [failure recovery](docs/WORKFLOW.md#failures-and-changes). Exports include clustered accuracy and difference intervals, paired video-level tests, costs, predictions, and identities saved when inputs were accepted. Annotation revision is pinned in [`sample.py`](src/video_benchmark/videomme/sample.py).
 
-## Knobs
+## Benchmark settings
 
 | Variable | Default | Effect |
 |----------|---------|--------|
@@ -155,7 +176,7 @@ python -m video_benchmark.local_demo
 
 The Pixeltable release is the `pixeltable==` pin in [`pyproject.toml`](pyproject.toml). [CI](.github/workflows/ci.yml) checks the pin, lint, offline provider tests, CLI help, repeated isolated schema application, a real local media graph, and showcase rendering. [Upgrade watch](.github/workflows/upgrade-watch.yml) tests newer releases with their dependencies and fails with a pin-bump notice when they pass. [Dependabot](.github/dependabot.yml) updates GitHub Actions.
 
-To rebuild the paper: `pip install -e ".[paper]"`, then `python scripts/build_paper_figures.py && ./scripts/build_paper.sh` (needs `pandoc` and `tectonic`).
+To rebuild the paper: install `.[paper]`, then run `python scripts/build_paper_figures.py`, `python scripts/render_paper_tables.py`, and `./scripts/build_paper.sh` (needs `pandoc` and `tectonic`). The repeated README and paper result tables come from `docs/paper/numbers.json`; `python scripts/render_paper_tables.py --check` detects drift without writing. Reanalysis reads the committed exports and makes no provider calls.
 
 ## License
 
