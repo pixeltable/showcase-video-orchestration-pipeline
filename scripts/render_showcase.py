@@ -143,13 +143,16 @@ def render(golden_dir: Path) -> str:
 <body>
   <header>
     <h1>Video orchestration you can inspect.</h1>
-    <p>Compare a native video call with a pipeline of keyframes, audio, captions, and synthesis.
+    <p>Inspect a recorded static native call and a pipeline of keyframes, audio,
+      captions, and synthesis.
       Pixeltable stores the media and computed results together, so you can inspect evidence,
       change a transform, and query the result through the SDK.</p>
     <nav aria-label="Showcase resources">
       <a href="{REPOSITORY}">Run the showcase</a>
       <a href="{REPOSITORY}/blob/main/src/video_benchmark/schema.py">Inspect the pipeline</a>
       <a href="{REPOSITORY}/blob/main/docs/WORKFLOW.md">Reproduce the experiment</a>
+      <a href="{REPOSITORY}/blob/main/docs/AGENTIC_VIDEO_COMPARISON.md">
+        Current comparison protocol</a>
     </nav>
     <p class="meta">
       Saved question: {query}<br />
@@ -160,6 +163,15 @@ def render(golden_dir: Path) -> str:
     </p>
   </header>
   <main>
+    <section aria-labelledby="baseline-title">
+      <h2 id="baseline-title">The native baseline has changed</h2>
+      <p>Gemini now offers
+        <a href="https://ai.google.dev/gemini-api/docs/video-understanding">
+          agentic video processing</a>.
+        Agentic mode has not been measured here. These saved results cannot establish a
+        current cost or quality advantage; a new comparison needs matched-model static,
+        agentic, and application-owned evidence paths.</p>
+    </section>
     <section aria-labelledby="pipeline-title">
       <h2 id="pipeline-title">What the modular path keeps</h2>
       <ol class="flow">

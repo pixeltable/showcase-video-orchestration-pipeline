@@ -56,3 +56,5 @@ def test_saved_output_cannot_execute_html_and_keeps_original_sdk(tmp_path: Path)
     assert 'n/a ($0.0010 known subtotal)' in rendered
     assert 'not a quality benchmark' in rendered
     assert 'unrecorded retry or failed-request charges' in rendered
+    assert 'Agentic mode has not been measured here' in rendered
+    assert 'AGENTIC_VIDEO_COMPARISON.md' in rendered

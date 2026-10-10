@@ -309,6 +309,7 @@ def provider_session(ledger: AttemptLedger, *, seconds: float, bedrock_enabled: 
         return method.upper() == 'POST' and (
             ':generateContent' in parsed.path
             or '/models/' in parsed.path
+            or 'interactions' in unquote(parsed.path).split('/')
             or parsed.hostname in {'queue.fal.run', 'fal.run'}
         )
 

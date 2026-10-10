@@ -8,9 +8,11 @@ Keep your media, intermediate results, provider responses, and business logic in
 
 Start with a local media review rule: prepare frames and audio once, reuse the frames for two requests, change the rule, and deliberately refresh one request. The SDK graph makes the data and each decision inspectable.
 
-The optional benchmark then asks a measurable question: answer a video question by sending the whole video to Gemini (**native**), or by captioning keyframes, transcribing audio, and answering from saved evidence (**orchestrated**). The same Gemini model writes both answers. Local models, fal, and Bedrock are additional comparison paths.
+The optional benchmark records a Gemini 2.5 comparison: answer from the whole video (**static native**), or from keyframe captions, a transcript, and saved evidence (**orchestrated**). The same model writes both answers, with different perception and media settings. Local models, fal, and Bedrock are additional paths.
 
-**Validated SDK:** Pixeltable **0.7.16**, the latest stable PyPI release checked on 2026-10-09. The committed experiments used 0.7.11; upgrading the application does not turn those recordings into new experiments. A separate [live smoke record](docs/validation/2026-10-09.json) covers all five cloud paths on a generated four-second clip; it verifies execution and accounting, with an explicit transcription hallucination recorded.
+**Current comparison:** Gemini now supports [agentic video processing](https://ai.google.dev/gemini-api/docs/video-understanding), which makes the older native baseline incomplete for a new experiment. Agentic mode has **not been measured here**. The [updated comparison protocol](docs/AGENTIC_VIDEO_COMPARISON.md) compares current-model static, agentic, and application-owned evidence paths. Pixeltable's demonstrated value is durable media, inspectable transformations, reusable evidence, and explicit business rules and refresh timing.
+
+**Validated SDK:** Pixeltable **0.7.16**, the latest stable PyPI release checked on 2026-10-10. The committed experiments used 0.7.11; upgrading the application does not turn those recordings into new experiments. A separate [live smoke record](docs/validation/2026-10-09.json) covers all five cloud paths on a generated four-second clip; it verifies execution and accounting, with an explicit transcription hallucination recorded.
 
 **Paper:** [docs/paper/paper.md](docs/paper/paper.md) · **Showcase:** [docs/showcase.html](docs/showcase.html) · **Golden run:** [results/golden/](results/golden/) · **How it works:** [docs/WORKFLOW.md](docs/WORKFLOW.md)
 
@@ -98,7 +100,7 @@ Intervals resample whole videos; paired video-level tests do not resolve the Gem
 
 “Billed” in historical exports means **response-accounted cost estimated from token usage after cache discounts**, not a reconciled invoice. Retried or interrupted calls without stored usage, provider refusals, local compute, storage, and egress can add unrecorded spend. Prices are a dated snapshot; see [cost boundaries](docs/WORKFLOW.md#cost-accounting).
 
-Orchestration replaces video input tokens ($0.30 per million) with generated captions and transcript ($2.50 per million), so on a single question it saves little. It pays off when several questions reuse the same evidence, and Gemini's implicit cache gives native calls part of that reuse.
+In this recorded Gemini 2.5 experiment, orchestration traded video input ($0.30 per million tokens) for generated captions and transcript ($2.50 per million output tokens). Reusing preparation across three questions improved its measured economics; Gemini's implicit cache also discounted native input. These dated results do not predict the cost or quality of current agentic processing.
 
 > **Correction.** An earlier version of this repository reported that orchestration cost 66% less than native ($0.039 vs $0.114). That figure came from a flat $1.50 per million token price, which overcharged video input fivefold, and from uncounted thinking tokens. Section 3 of the paper lists every correction.
 

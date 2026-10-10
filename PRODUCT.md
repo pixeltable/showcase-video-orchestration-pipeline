@@ -19,6 +19,12 @@ is prepared once and reused by two requests. Query-backed evidence stays stored 
 explicit refresh. The optional paid comparisons have separate admission and accounting
 controls; completed provider calls do not establish truthful answers.
 
+Current Gemini capabilities make adaptive video processing a provider option. The
+showcase's durable lesson is ownership of media, transformations, evidence, decisions,
+and refresh timing. Its recorded Gemini 2.5 comparison does not measure current agentic
+mode. Follow the [updated protocol](docs/AGENTIC_VIDEO_COMPARISON.md) before claiming a
+new cost or quality advantage.
+
 ## Scope and limits
 
 Bind to the loopback interface in a new temporary home. Do not present this local lesson as

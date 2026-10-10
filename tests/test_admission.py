@@ -339,6 +339,52 @@ def test_vertex_and_custom_model_endpoints_fail_before_send(tmp_path):
     assert calls == []
 
 
+@pytest.mark.parametrize('transport', ['async', 'sync', 'aiohttp'])
+def test_interactions_cannot_bypass_admission(tmp_path, monkeypatch, transport):
+    import aiohttp
+
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(200, json={})
+
+    def unexpected_aio_request(*args, **kwargs):
+        raise AssertionError('Unsupported Interactions request reached aiohttp')
+
+    monkeypatch.setattr(aiohttp.ClientSession, 'request', unexpected_aio_request)
+    journal = ledger(tmp_path)
+    urls = (
+        'https://generativelanguage.googleapis.com/v1beta/interactions',
+        'https://generativelanguage.googleapis.com/v1/interactions/',
+        'https://custom.example/v1beta/%69nteractions',
+    )
+
+    async def run():
+        with admission.provider_session(journal, seconds=4):
+            if transport == 'aiohttp':
+                async with aiohttp.ClientSession() as client:
+                    for url in urls:
+                        with pytest.raises(admission.AdmissionError):
+                            client.request('POST', url, json={})
+            elif transport == 'sync':
+                with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+                    for url in urls:
+                        with pytest.raises(admission.AdmissionError):
+                            client.post(url, json={})
+            else:
+                async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+                    for url in urls:
+                        with pytest.raises(admission.AdmissionError):
+                            await client.post(url, json={})
+                    # Metadata polling remains a read, not an unreserved model creation.
+                    await client.get(urls[0] + '/offline-id')
+
+    asyncio.run(run())
+    assert len(calls) == (1 if transport == 'async' else 0)
+    assert journal.snapshot()['attempts'] == []
+
+
 def test_pixeltable_computed_graph_records_actual_attempts(tmp_path, monkeypatch, test_video):
     from dataclasses import replace
 

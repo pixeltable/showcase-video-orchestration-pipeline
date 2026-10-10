@@ -112,9 +112,9 @@ concurrent admissions from exceeding the estimated ledger budget. A later invoca
 a new attempt count while retaining the ledger's previous spending and unknown holds.
 
 The guards cover Gemini Developer API `generateContent`, fal's video-understanding queue
-submission, and Nova `Converse` on the standard configured AWS region endpoint. Vertex,
-custom model endpoints, unsupported operations, and unsupported existing transports fail
-before a model send. Only one managed run owns these process-wide hooks at a time. Direct
+submission, and Nova `Converse` on the standard configured AWS region endpoint. Interactions
+model POSTs, Vertex, custom model endpoints, unsupported operations, and existing unsupported
+transports fail before a model send. Only one managed run owns these process-wide hooks at a time. Direct
 SDK scripts outside the context need their own admission policy. SDK/provider upgrades
 must rerun the actual offline transport tests.
 
@@ -145,7 +145,8 @@ The new 4,096-token output cap changes future experimental definitions. Historic
 exports and the paper are retained; they are not a fresh paired experiment on 0.7.16.
 The same sample count and seed cannot reconstruct the exact historical media/question set.
 Agree on spending and duration limits before starting a full rerun. See the
-[research workflow](WORKFLOW.md#fresh-research-comparisons) and [review](REVIEW.md).
+[current agentic comparison protocol](AGENTIC_VIDEO_COMPARISON.md),
+[research workflow](WORKFLOW.md#fresh-research-comparisons), and [review](REVIEW.md).
 
 For code changes, install `.[dev,workspace,fal]`, run `pytest -q`, `ruff check src tests
 scripts`, `python scripts/schema_apply_smoke.py`, the local lesson and quality checks, and

@@ -29,7 +29,7 @@ Each benchmark path answers the same question about the same video. The benchmar
 | 4 | fal `video-understanding` on the first 120 s | 1 | `fal_cost` |
 | 5 | Amazon Nova on Bedrock (inline H.264 video under 18 MB, re-encoded when needed) | 1 | `nova_cost` |
 
-Paths 1, 1L, and 2 use the same Gemini model, so their differences come from the architecture alone.
+Paths 1, 1L, and 2 use the same Gemini model, with different media and perception settings. They use `generateContent`; no path currently calls Interactions or enables agentic video processing. The [current comparison protocol](AGENTIC_VIDEO_COMPARISON.md) separates processing-mode effects from model upgrades and evidence architecture.
 
 ## The Pursuit catalog (`video_benchmarking`)
 
@@ -111,7 +111,7 @@ All accuracy and accuracy-difference intervals resample entire videos. Paired te
 - The answer-writing call of every path gets the same question and the same answer guidance ([`prompts.py`](../src/video_benchmark/prompts.py)); only the evidence differs.
 - Paths 2 and 3 caption the same sampled frames and select the same subset.
 - Perception calls (captions, transcription) run without thinking; answer-writing calls use the model's default thinking.
-- Path 1L is the cost-optimized native baseline, so orchestration is not compared only against an unoptimized native call.
+- Path 1L is the lower-cost native setting tested in the historical Gemini 2.5 experiment. A current-model comparison also needs an agentic baseline; low resolution alone is insufficient.
 
 ## Failures and changes
 
@@ -135,5 +135,7 @@ All accuracy and accuracy-difference intervals resample entire videos. Paired te
 Benchmark reset rules freeze experiments. For a continuously running application, use Pixeltable schema migration and selective recomputation with an explicit policy for refreshing materialized query results. This repository is a local SDK and research showcase; authentication, upload quotas, background job admission, deployment, and invoice reconciliation are outside its validated scope.
 
 ## Fresh research comparisons
+
+Start with the [agentic video comparison protocol](AGENTIC_VIDEO_COMPARISON.md). Its proposed arms are not CLI paths. Interactions model POSTs fail closed in managed runs until their admission, lifecycle, and usage accounting are supported. A model-name substitution cannot reproduce that experiment.
 
 A paired rerun must retain the original question IDs and video bytes from the published exports, then use a new Pixeltable home and export directory. Sampling again with the same question count and seed is insufficient: the historical 123-question sample has 30 short, 51 medium, and 42 long questions, whereas the current sampler uses equal duration quotas. A different sample answers a different research question. Preserve historical artifacts and compare only compatible runs. The October 9 cloud smoke check is a four-second transport/accounting check, not a rerun of those published results.

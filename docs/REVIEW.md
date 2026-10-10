@@ -130,3 +130,33 @@ response join. Direct SDK calls outside the managed context do not inherit these
 Provider or SDK upgrades need the transport regressions again. A full paid paired research
 rerun, live verification of the new guards, public auth/tenancy, load behavior, and
 invoice reconciliation remain separate validation work.
+
+## Agentic video comparison follow-up — 2026-10-10
+
+The [capability review and experiment protocol](AGENTIC_VIDEO_COMPARISON.md) incorporates
+Google's agentic video update. README, product scope, workflow, saved-output showcase, and
+blog draft now distinguish historical Gemini 2.5 results from a proposed matched-model
+static/agentic/stored-evidence study. The new protocol includes native provider state/cache
+reuse and separates processing-mode effects from model upgrades. Recorded research data,
+tables, figures, and the paper were preserved; no current accuracy or cost winner is claimed.
+
+An offline real-SDK request probe found that installed `google-genai` 2.10.0 silently
+discarded the video `processing` field. PyPI reported 2.29.0 as the latest release checked
+today. The local environment and dependency minimum are now 2.29.0; real-SDK serialization
+tests confirm that both explicit modes reach the serialized request. Server-side mode
+execution and account access remain unverified.
+
+The former admission endpoint recognition also allowed an unreserved Interactions POST.
+Managed runs now reject that API across synchronous/async HTTPX and existing aiohttp
+transports, including custom/encoded endpoint paths. Actual synchronous and asynchronous
+Google Interactions clients are rejected before transport; metadata GETs remain uncounted.
+This closes a bypass without pretending that the existing static reservation or
+`usageMetadata` parser supports agentic internal processing. An Interactions lifecycle,
+reservation, and accounting adapter remains a prerequisite to enabling the proposed arms.
+
+Validation with Google SDK 2.29.0: **154 tests passed**, with the same 28 upstream
+FastAPI/scene-detection warnings. Lint, installed-dependency consistency, generated showcase,
+and read-only result-table checks passed. All existing Pursuit/Video-MME path and ASR
+declarations applied twice in an isolated home, without rows or provider calls.
+No paid provider call or user-catalog mutation was made for this follow-up. The full paired
+rerun still needs the exact historical identities and deliberately chosen spending limits.
