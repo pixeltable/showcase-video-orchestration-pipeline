@@ -55,7 +55,7 @@ def test_native_and_orchestrated_run_once_each(fresh_catalog, fake_gemini, test_
         if call['kind'] in {'caption', 'asr'}:
             assert call['config'].thinking_config.thinking_budget == 0
         if call['kind'] == 'synthesis':
-            assert call['config'] is None
+            assert call['config'].max_output_tokens == 4096
 
     synthesis = next(c for c in fake_gemini.calls if c['kind'] == 'synthesis')
     assert 'Speaker 2: Nice pants.' in synthesis['text']
@@ -181,8 +181,11 @@ def test_missing_caption_usage_does_not_export_a_partial_total_as_complete(
     assert entry['stages']['captions']['unknown_cost_calls'] == 4
     assert entry['stages']['captions']['failed_calls'] == 0
     syntheses = runner.table('syntheses')
-    assert syntheses.where(syntheses.run_id == run_id).select(
-        syntheses.gemini_total_cost
-    ).collect()[0]['gemini_total_cost'] is None
+    assert (
+        syntheses.where(syntheses.run_id == run_id)
+        .select(syntheses.gemini_total_cost)
+        .collect()[0]['gemini_total_cost']
+        is None
+    )
     assert entry['response_accounted_cost_usd'] == pytest.approx(ASR_COST + SYNTHESIS_COST)
     assert entry['response_accounted_list_cost_usd'] == pytest.approx(ASR_COST + SYNTHESIS_COST)

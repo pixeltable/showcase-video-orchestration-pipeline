@@ -28,14 +28,22 @@ videomme = ["datasets>=2.19", "yt-dlp>=2024.8"]
 paper = ["matplotlib>=3.8"]
 notebook = ["jupyter>=1.0", "ipykernel>=6.0"]
 dev = ["ruff>=0.4", "pytest>=8.0"]
+# FastAPI 0.142+ changes its telemetry dependency; keep this small surface compatible
+# with the Pixeltable 0.7.16 optional telemetry stack validated here.
+workspace = ["fastapi>=0.120,<0.142", "uvicorn>=0.34"]
 
 [project.scripts]
 run-benchmark = "video_benchmark.cli:main"
 run-videomme = "video_benchmark.videomme.cli:main"
 run-media-demo = "video_benchmark.local_demo:main"
+run-evidence-workspace = "video_benchmark.workspace:main"
+run-quality-checks = "video_benchmark.quality:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+video_benchmark = ["web/*.html", "quality_cases.json"]
 
 [tool.ruff]
 line-length = 100

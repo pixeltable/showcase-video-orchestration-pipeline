@@ -14,15 +14,21 @@ The optional benchmark then asks a measurable question: answer a video question 
 
 **Paper:** [docs/paper/paper.md](docs/paper/paper.md) · **Showcase:** [docs/showcase.html](docs/showcase.html) · **Golden run:** [results/golden/](results/golden/) · **How it works:** [docs/WORKFLOW.md](docs/WORKFLOW.md)
 
-## Try the media graph without keys
+## Explore the media workspace without keys
 
 ```bash
 git clone https://github.com/pixeltable/showcase-video-orchestration-pipeline
 cd showcase-video-orchestration-pipeline
 python3.12 -m venv .venv && source .venv/bin/activate
-pip install -e .
-run-media-demo
+pip install -e ".[workspace]"
+run-evidence-workspace
 ```
+
+Open the loopback URL printed at launch. Play the generated clip and audio, inspect the timestamped frames, set minimum brightness to **128**, and apply the rule. Both saved requests become stale. Refresh **first**: it uses two frames while **second** still uses four. Preparation remains four frames and two audio segments; the source and prepared-media hashes stay unchanged.
+
+![Actual local evidence workspace after changing the rule and refreshing only the first request](docs/images/evidence-workspace.jpg)
+
+The workspace uses a real temporary Pixeltable catalog and makes no provider calls. Reloading reads the stored state. Ctrl-C stops the workspace and removes its owned catalog after database shutdown. It accepts no uploads and binds only to loopback. Follow the [walkthrough and source map](docs/WALKTHROUGH.md), including the [narrow view](docs/images/evidence-workspace-mobile.jpg), or run `run-media-demo` for the terminal-only lesson with the base install.
 
 This generates a four-second clip, applies a real `TableModel` graph, and inserts one video row. Pixeltable extracts audio, emits four timestamped frames, resizes their thumbnails, and splits the audio into segments. A deterministic brightness rule selects frames for review; two request rows query the same prepared frames.
 
@@ -35,7 +41,7 @@ clips.update({'minimum_brightness': 128.0}, where=clips.clip_id == 'demo')
 requests.recompute_columns('evidence', where=requests.request_id == 'first')
 ```
 
-Read the complete graph and assertions in [`local_demo.py`](src/video_benchmark/local_demo.py), then change its review rule. Query-backed evidence is a stored snapshot: the application decides when to refresh it.
+Read the shared graph in [`local_graph.py`](src/video_benchmark/local_graph.py) and terminal assertions in [`local_demo.py`](src/video_benchmark/local_demo.py), then change the review rule. Query-backed evidence is a stored snapshot: the application decides when to refresh it.
 
 ## What you control
 
@@ -46,9 +52,18 @@ Read the complete graph and assertions in [`local_demo.py`](src/video_benchmark/
 | Model and API choices | Provider expressions in the graph; adapters for capabilities the built-ins do not expose |
 | Reuse and refresh | The local demo shares frame preparation between requests; Video-MME shares captions and transcripts between questions. Refresh stored query results deliberately. |
 | Failures | Per-cell errors, a bounded retry for transient failures, and explicit empty-output counts |
+| Paid admission | Durable attempt reservations before supported model sends; explicit budget, attempt, duration, and output limits |
 | Experiment identity | Definition digest, source and media hashes, package versions, and pinned annotation revision |
 
-The local graph is in [`local_demo.py`](src/video_benchmark/local_demo.py); the optional benchmark graphs are in [`schema.py`](src/video_benchmark/schema.py) and [`videomme/schema.py`](src/video_benchmark/videomme/schema.py). Importing these modules declares functions; applying the models creates the catalog. Source rows are inserted before request rows so query-backed evidence is ready. See [workflow and extension points](docs/WORKFLOW.md) and the [in-depth review](docs/REVIEW.md).
+The local graph is in [`local_graph.py`](src/video_benchmark/local_graph.py); the optional benchmark graphs are in [`schema.py`](src/video_benchmark/schema.py) and [`videomme/schema.py`](src/video_benchmark/videomme/schema.py). Importing these modules declares functions; applying the models creates the catalog. Source rows are inserted before request rows so query-backed evidence is ready. See [workflow and extension points](docs/WORKFLOW.md), the [in-depth review](docs/REVIEW.md), and [deployment/recovery](docs/DEPLOYMENT.md).
+
+## Check completion separately from quality
+
+```bash
+run-quality-checks
+```
+
+Six small labelled records cover a recorded tone-to-speech hallucination, an authored truthful description, refusal, missing audio, empty output, and invalid timestamps. The real October 9 synthesis completed but invented speech and a gradual fade; the checks flag both against the generated source. Other records are explicitly synthetic. These are narrow diagnostic rules, not a semantic evaluator or a new accuracy benchmark. Case hashes and installed versions accompany the output. [Quality boundaries](docs/WALKTHROUGH.md#check-the-quality-boundary) explain the labels and limitations.
 
 ## Recorded research results
 
@@ -91,10 +106,15 @@ Orchestration replaces video input tokens ($0.30 per million) with generated cap
 
 ```bash
 cp .env.example .env       # set GOOGLE_API_KEY
-run-benchmark --paths 1,1L,2
+run-benchmark --paths 1,1L,2 --preflight
+run-benchmark --paths 1,1L,2 --budget-usd 1 --max-attempts 64
 ```
 
 After the base installation above, this downloads the sample clip, builds the `video_benchmarking` catalog, and writes `results/<run_id>/`: `REPORT.md`, `summary.json` (answers, usage, and response-accounted cost), `keyframes.csv`, and `manifest.json` (config, prices, versions, source and media identities). The recorded default comparison was about $0.09 at the documented rates; new runs make paid API calls and their cost can vary.
+
+Managed CLI runs reserve estimated cost **before every supported model send**, including retries and calls triggered during schema application. The default shared ledger is `results/provider-ledger.sqlite3`; pending or unknown attempts retain their reservations across restarts. Budget defaults to **$1**, attempts to **64 per invocation**, and media duration to **600 seconds**. Gemini and Nova output is capped at **4,096 tokens**, a changed experimental definition for future runs. Downloads and polling are not model attempts. Preflight may download media and checks configured credentials, not provider access; it makes no model calls or catalog changes.
+
+The budget bounds admission using dated prices and conservative envelopes; it is **not an invoice ceiling**. An unknown attempt can coexist with more work while its held reservation fits the remaining budget. Fal records queue acceptance and a duration estimate; final polled output remains in the catalog. Unsupported model endpoints fail before send. Direct SDK calls outside these managed CLIs do not inherit the guard. Inspect the [attempt contract](docs/WALKTHROUGH.md#admit-paid-work-deliberately) before changing limits or recovering a run.
 
 ## Optional provider paths
 
@@ -119,9 +139,11 @@ A benchmark catalog freezes paths, effective configuration, computation-source d
 
 ```bash
 pip install -e ".[videomme]"
-run-videomme --n 30 --paths 1,1L,2          # stratified sample; downloads videos with yt-dlp
-run-videomme --local-only --n 123 --paths 1,1L,2,5
+run-videomme --n 30 --paths 1,1L,2 --preflight  # sample/download; no model calls
+run-videomme --local-only --n 123 --paths 1,1L,2,5 --preflight
 ```
+
+The small default admission limits can reject or stop a full research run. Inspect the sample manifest and duration first, then supply a deliberately chosen budget, attempt limit, and media-duration limit. A paired rerun must preserve exact question/media identities and effective settings; the same count and seed are insufficient. [Research contribution checks](docs/WALKTHROUGH.md#make-a-research-change-reviewable) define the required evidence.
 
 Questions share their video's captions and transcript, so orchestration prepares evidence once per video. `run-videomme` checks all proposed input identities before inserting any rows: an existing ID with changed media bytes, annotation revision, question, options, or answer is rejected. Identical inputs resume without new calls; adding a question to the same video runs only its answer stage. Interrupted calls that did not commit can be repeated. Persisted failures need explicit recomputation; see [failure recovery](docs/WORKFLOW.md#failures-and-changes). Exports include clustered accuracy and difference intervals, paired video-level tests, costs, predictions, and identities saved when inputs were accepted. Annotation revision is pinned in [`sample.py`](src/video_benchmark/videomme/sample.py).
 
@@ -153,6 +175,10 @@ pxt rows video_benchmarking/syntheses -n 1 --cols gemini_prompt,gemini_answer,ge
 ```
 src/video_benchmark/
   schema.py        Pursuit catalog: runs, keyframes, audio_chunks, syntheses
+  local_graph.py   provider-free preparation, policy, and stored request evidence
+  workspace.py     loopback browser workspace over that same graph
+  admission.py     managed CLI attempt ledger and transport guards
+  quality.py       small labelled completion/correctness boundary checks
   pricing.py       rates and cost from usage metadata
   prompts.py       shared answer instructions
   evidence.py      transcript parsing, frame selection, synthesis request
@@ -167,11 +193,12 @@ results/paper/     the exports the paper cites
 ## Development
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,workspace,fal]"
 pytest                       # offline: a fake Gemini client and a generated test video
 ruff check src tests scripts
 python scripts/schema_apply_smoke.py
 python -m video_benchmark.local_demo
+python -m video_benchmark.quality
 ```
 
 The Pixeltable release is the `pixeltable==` pin in [`pyproject.toml`](pyproject.toml). [CI](.github/workflows/ci.yml) checks the pin, lint, offline provider tests, CLI help, repeated isolated schema application, a real local media graph, and showcase rendering. [Upgrade watch](.github/workflows/upgrade-watch.yml) tests newer releases with their dependencies and fails with a pin-bump notice when they pass. [Dependabot](.github/dependabot.yml) updates GitHub Actions.

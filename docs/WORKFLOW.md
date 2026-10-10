@@ -12,7 +12,7 @@ Run `run-media-demo`. It generates a four-second clip, extracts audio, splits it
 | Update threshold to 128 | 2 | 4 | 4 | 4 |
 | Recompute first request's evidence | 2 | 2 | 4 | 4 |
 
-The assertions verify the unchanged source bytes, thumbnail contents, audio segment contents, and preparation call count. Only the first request's evidence and downstream decision refresh. The second snapshot remains available for inspection. The catalog is temporary and no provider is called. The graph and operations are in [`local_demo.py`](../src/video_benchmark/local_demo.py); its two deterministic UDFs live in [`local_demo_rules.py`](../src/video_benchmark/local_demo_rules.py), an importable module as required by Pixeltable.
+The assertions verify the unchanged source bytes, thumbnail contents, audio segment contents, and preparation call count. Only the first request's evidence and downstream decision refresh. The second snapshot remains available for inspection. The catalog is temporary and no provider is called. The shared graph is in [`local_graph.py`](../src/video_benchmark/local_graph.py), its terminal assertions in [`local_demo.py`](../src/video_benchmark/local_demo.py), and its deterministic UDFs in [`local_demo_rules.py`](../src/video_benchmark/local_demo_rules.py). Install `.[workspace]` and run `run-evidence-workspace` to inspect the same graph in a browser. Follow the [interactive walkthrough](WALKTHROUGH.md).
 
 Business logic and refresh timing are application choices. A computed column's ordinary dependencies update with their source; a query-backed lookup of another table is a stored snapshot and requires deliberate refresh.
 
@@ -84,6 +84,13 @@ Captions and the transcript are computed once per video and reused by that video
 Every invocation preflights all proposed video and question identities before inserting either table. Accepted rows store the annotation revision, canonical input SHA-256, and the video's original bytes SHA-256 and size. Reusing an ID with different media, revision, question, options, answer, or video link is rejected; replacing bytes at the same path also conflicts. Another path to identical bytes is accepted. A new question for an unchanged video runs only answer stages. An existing row without a saved identity cannot be treated as identical. The frozen Video-MME definition also includes the annotation revision. These safeguards require rebuilding older catalogs after exporting their runs; they do not rewrite old results.
 
 ## Cost accounting
+
+Managed comparison CLIs additionally commit durable reservations before supported model
+transport sends, including retries and schema-triggered computation. Their default shared
+ledger, budget/attempt/media limits, unknown holds, endpoint restrictions, and verification
+boundaries are documented in the [attempt contract](WALKTHROUGH.md#admit-paid-work-deliberately).
+This is estimated admission, not an invoice ceiling. Output is capped at 4,096 tokens for
+new Gemini/Nova runs; this changes the experimental definition from the historical exports.
 
 Cost is computed from the token counts each response reports, never from text length:
 

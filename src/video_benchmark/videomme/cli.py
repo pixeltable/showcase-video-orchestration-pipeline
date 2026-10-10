@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
 
+from video_benchmark import admission
 from video_benchmark import config as configuration
 from video_benchmark.config import PROJECT_ROOT, load_config
 from video_benchmark.paths import PATH_LABELS
@@ -40,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         '--export', type=str, default=None, help='Export base (default results/videomme)'
     )
+    admission.add_arguments(p)
     return p.parse_args()
 
 
@@ -49,9 +52,11 @@ def main() -> int:
         configuration.load_dotenv()
         paths = parse_paths(args.paths or os.environ.get('VIDEOME_PATHS'))
         config = load_config(paths, videomme=True)
+        admission.validate_arguments(args)
         n = args.n if args.n is not None else int(os.environ.get('VIDEOME_N', DEFAULT_N))
         seed = (
-            args.seed if args.seed is not None
+            args.seed
+            if args.seed is not None
             else int(os.environ.get('VIDEOME_SEED', DEFAULT_SEED))
         )
     except ValueError as exc:
@@ -60,8 +65,10 @@ def main() -> int:
     if n < 1:
         print('Error: --n must be at least 1.', file=sys.stderr)
         return 1
-    if not args.sample_only and paths & {'1', '1L', '2', '3'} and not (
-        os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY')
+    if (
+        not args.sample_only
+        and paths & {'1', '1L', '2', '3'}
+        and not (os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY'))
     ):
         print(
             'Error: set GOOGLE_API_KEY or GEMINI_API_KEY (Path 3 shares Gemini ASR).',
@@ -78,11 +85,49 @@ def main() -> int:
     )
     if args.sample_only:
         return 0
-    if args.reset:
-        reset_catalog()
     try:
-        predictions, videos = run_videomme(config, paths, questions, downloads)
-    except (CatalogSchemaMismatch, InputConflict) as exc:
+        seconds = admission.inspect_media(
+            list(downloads.values()),
+            max_seconds=args.max_media_seconds,
+            require_audio=plan_paths(config, paths).modular,
+        )
+        if config.vision_sample_keyframes > 64 or any(len(q['question']) > 4000 for q in questions):
+            raise ValueError('Question text must fit 4000 characters and preparation 64 frames.')
+    except (OSError, ValueError) as exc:
+        print(f'Error: {exc}', file=sys.stderr)
+        return 1
+    if args.preflight:
+        print(
+            json.dumps(
+                {
+                    'paths': plan_paths(config, paths).enabled(),
+                    'questions': len(questions),
+                    'videos': len(downloads),
+                    'maximum_duration_sec': seconds,
+                    'budget_usd': args.budget_usd,
+                    'max_attempts': args.max_attempts,
+                    'model_output_cap_tokens': 4096,
+                    'provider_access': 'not tested; credentials configured',
+                },
+                indent=2,
+            )
+        )
+        return 0
+    try:
+        ledger = admission.AttemptLedger(
+            Path(args.ledger)
+            if args.ledger
+            else PROJECT_ROOT / 'results' / 'provider-ledger.sqlite3',
+            budget_usd=args.budget_usd,
+            max_attempts=args.max_attempts,
+        )
+        with admission.provider_session(
+            ledger, seconds=seconds, bedrock_enabled=plan_paths(config, paths).nova
+        ):
+            if args.reset:
+                reset_catalog()
+            predictions, videos = run_videomme(config, paths, questions, downloads)
+    except (CatalogSchemaMismatch, InputConflict, admission.AdmissionError) as exc:
         print(f'Error: {exc}', file=sys.stderr)
         return 1
     export_base = Path(args.export) if args.export else PROJECT_ROOT / 'results' / 'videomme'
@@ -95,12 +140,16 @@ def main() -> int:
         n=n,
         export_base=export_base,
     )
+    admission.export_snapshot(ledger, out)
     print((out / 'REPORT.md').read_text())
     print(f'Exported {out}')
-    return int(any(
-        record.get(f'p{path.lower()}_error') or record.get(f'p{path.lower()}_accounting_error')
-        for record in predictions for path in plan_paths(config, paths).enabled()
-    ))
+    return int(
+        any(
+            record.get(f'p{path.lower()}_error') or record.get(f'p{path.lower()}_accounting_error')
+            for record in predictions
+            for path in plan_paths(config, paths).enabled()
+        )
+    )
 
 
 if __name__ == '__main__':

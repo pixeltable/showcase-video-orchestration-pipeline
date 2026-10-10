@@ -17,6 +17,8 @@ from video_benchmark.local_demo import make_demo_video as make_test_video
 # Before any test touches the catalog: never write to the developer's ~/.pixeltable.
 TEST_HOME = Path(tempfile.mkdtemp(prefix='pxt-tests-'))
 os.environ['PIXELTABLE_HOME'] = str(TEST_HOME)
+os.environ['PIXELTABLE_PGDATA'] = str(TEST_HOME / 'pgdata')
+os.environ.pop('PIXELTABLE_DB_CONNECT_STR', None)
 # No test may reach a paid provider: replace real keys from the shell with dummies.
 os.environ['GOOGLE_API_KEY'] = 'test-key'
 for _key in (
@@ -42,7 +44,8 @@ def throwaway_catalog():
             pg_ctl(['-m', 'fast', '-w', 'stop'], pgdata=TEST_HOME / 'pgdata')
         except subprocess.CalledProcessError:
             pass  # already stopped
-    shutil.rmtree(TEST_HOME, ignore_errors=True)
+    if not (TEST_HOME / 'pgdata' / 'postmaster.pid').exists():
+        shutil.rmtree(TEST_HOME, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)

@@ -27,7 +27,7 @@ jobs:
       - name: Install package (dev)
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev,workspace,fal]"
       - name: Pixeltable pin
         run: python scripts/pixeltable_pin.py --check
       - name: Ruff
@@ -38,10 +38,13 @@ jobs:
         run: |
           run-benchmark --help
           run-videomme --help
+          run-evidence-workspace --help
       - name: Isolated schema apply
         run: python scripts/schema_apply_smoke.py
       - name: Local media graph (no credentials or API calls)
         run: python -m video_benchmark.local_demo
+      - name: Labelled quality boundary checks (no provider calls)
+        run: python -m video_benchmark.quality
       - name: Render showcase HTML
         run: python scripts/render_showcase.py
       - name: Check published result tables

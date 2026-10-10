@@ -34,7 +34,7 @@ The follow-up's targeted checks and final offline suite use generated local medi
 
 **Pixeltable 0.7.15 and 0.7.16 still lose a Gemini response whose `candidates` field is `None`.** Its built-in `generate_content` iterates `result.get('candidates', [])`, which raises `TypeError` for that value. The cell records the error, but the refusal response and reported usage are not stored. This was reproduced offline against the installed release. The application now keeps its cost unknown and does not automatically retry this deterministic parsing failure.
 
-Fixing this correctly belongs in the SDK's response normalization (`result.get('candidates') or []`), followed by validation of the stored refusal response and usage. A wrapper that catches the exception cannot recover the lost response. This review avoided duplicating the SDK's native video serialization and Files API handling or modifying private provider globals in production. Consequently, **full refusal-response inspectability is not established**, and historical refusals cannot be repaired from existing exports.
+Fixing the cell correctly belongs in the SDK's response normalization (`result.get('candidates') or []`), followed by validation of the stored refusal response and usage. The October 10 managed CLI guard now records supported response fields and usage before normalization, so new guarded refusals remain inspectable in the separate attempt ledger even when the cell fails. Direct SDK calls outside that guard retain the upstream boundary. No native video serialization, Files API handling, or private Pixeltable provider getter was duplicated. Historical refusals cannot be repaired from existing exports.
 
 ## Research interpretation
 
@@ -76,3 +76,57 @@ Two new temporary catalogs processed the same generated four-second, 64x48 clip:
 Successful execution did not establish quality: Path 2's ASR invented “mm.” from a tone, and synthesis repeated it. Native Gemini and fal also described the tone as ringing. The smoke check validates current transport, persistence, and usage accounting, not truthful ASR, calibrated audio classification, or research accuracy. Nova's path omits audio by design. No model prompt or score was changed to conceal these observations.
 
 The published 41-video/123-question comparison, local GGUF Path 3, GPU execution, quota/load behavior, and invoice reconciliation remain unvalidated on the new release. A full paired research rerun needs a separate spending limit and the exact published question/media identities rather than a new sample with the same count/seed. Historical result exports, figures, and headline statistics remain unchanged.
+
+## Interactive ownership and guarded admission - 2026-10-10
+
+The local browser workspace and command-line lesson now share `LocalMediaGraph`: one
+generated source, typed video/audio, frame and audio iterator views, thumbnails, a business
+rule, and two stored request decisions. The browser previews real prepared media and
+reads actual SDK state. Applying brightness 128 leaves both query snapshots stale;
+refreshing first changes only its evidence/decision. Source/preparation hashes and four
+preparation executions remain unchanged. The [walkthrough](WALKTHROUGH.md) maps controls
+to the declarations and explains explicit refresh.
+
+Both paid CLIs now inspect every media input before catalog mutations and run schema
+application inside a managed admission context. An independent SQLite attempt ledger
+commits a reservation before each supported transport send, captures available model
+response/usage before SDK normalization, and retains pending/unknown reservations across
+restarts. Limits cover estimated cumulative ledger spending, sends per invocation, input
+duration, question/frame preparation, and Gemini/Nova output. The 4,096-token output cap
+changes future definitions; historical comparisons were not rerun or relabelled.
+
+Review caught and corrected schema-triggered calls outside the guard, config-derived and
+warmed Bedrock clients bypassing default-session hooks, Vertex/custom endpoints passing
+through without reservations, and unsupported Bedrock operations. The final adapters
+instrument actual HTTPX and botocore sends while retaining Pixeltable's provider UDFs.
+Offline tests use real Google/fal/boto3 clients with substituted network transports.
+No private Pixeltable provider getter or media serialization is replaced.
+
+Six labelled quality records separate completion from narrow correctness checks. One
+reproduces the recorded tone/speech/gradual-fade hallucination; five are authored boundary
+cases. These diagnostics can miss arbitrary false answers and are not a model-quality
+benchmark. Exact case hashes, source identity, and package versions accompany their output.
+
+| Check | Observed result |
+|---|---|
+| Full offline suite | **147 tests passed**, with 28 upstream FastAPI/scene-detection deprecation warnings. Includes real SDK transport interception, atomic reservations, unknown holds, retries, warmed/bearer Bedrock clients, unsupported endpoints, actual graph HTTP state, origin/host/media boundaries, oversized/misreported bodies, labelled quality records, and existing research/accounting checks. |
+| Schema application | All existing Pursuit and Video-MME path sets and ASR declarations applied twice in an isolated home; no rows/provider calls. |
+| Real local lesson | Four frames/two audio segments, only first request refreshed, three total request evaluations, unchanged media hashes; owned database stopped before cleanup. |
+| Browser verification | Actual playback, loaded frame/audio media, rule mutation, scoped refresh and reload persistence passed at desktop and an approximately 520-pixel width. Captures are in `docs/images/`; not a full device matrix. |
+| Cold recovery | [Stopped-copy same-path restore](validation/2026-10-10-restore.json) preserved 1 clip, 4 frames, 2 audio segments, 2 requests, and hashes. A new process refreshed second only with zero preparation calls. Its frozen source hashes identify that drill; later launcher isolation/cleanup changes leave the shared graph unchanged. |
+| Release checks | Lint, dependency consistency, pin, installed CLI help/quality entrypoints, read-only result-table checks, and renderer checks passed. No current paid model calls, user-catalog mutations, research/PDF rewrites, or hosted deployment. |
+
+The workspace is loopback-only and temporary, with generated inputs, same-origin mutations,
+an actual-byte body bound, and a media allowlist. A failed database shutdown preserves its
+home. Tests and isolated launchers explicitly clear external database overrides.
+[DEPLOYMENT.md](DEPLOYMENT.md) covers authentication, private writer/database topology,
+secrets, retention, and backup responsibilities for an actual deployment.
+
+Admission uses dated price assumptions and conservative envelopes, not an invoice ceiling.
+Unknown attempts remain held but do not stop other work if its reservation still fits.
+Fal's ledger records acceptance/request ID plus a duration estimate; final polled answers
+remain in the catalog. The ledger identifies sessions/attempts, not a complete per-cell
+response join. Direct SDK calls outside the managed context do not inherit these guards.
+Provider or SDK upgrades need the transport regressions again. A full paid paired research
+rerun, live verification of the new guards, public auth/tenancy, load behavior, and
+invoice reconciliation remain separate validation work.

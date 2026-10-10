@@ -7,6 +7,7 @@ Frame row:       {'position_sec': s, 'caption': str, ...}
 
 from __future__ import annotations
 
+import math
 import re
 
 import pixeltable as pxt
@@ -27,6 +28,8 @@ def _parse_timestamp_sec(token: str) -> float | None:
         return None
     seconds = 0.0
     for part in parts:
+        if not math.isfinite(part) or part < 0:
+            return None
         seconds = seconds * 60.0 + part
     return seconds
 
@@ -43,6 +46,8 @@ def parse_diarized_transcript_impl(text: str, offset_sec: float = 0.0) -> list[d
             ts = _parse_timestamp_sec(match.group('ts'))
             start = offset_sec + (ts or 0.0)
             entry = {'start': start, 'end': start, 'text': match.group('body').strip()}
+            if ts is None:
+                entry['timestamp_status'] = 'invalid'
             if match.group('speaker'):
                 entry['speaker'] = match.group('speaker').strip()
             lines.append(entry)
@@ -79,7 +84,11 @@ def merge_transcript_rows_impl(rows: list) -> list[dict]:
 def _usable_line(line: dict) -> bool:
     text = str(line.get('text') or '').strip()
     # Drop a transcription model echoing its own instructions.
-    return bool(text) and not text.lower().startswith('transcribe this audio')
+    return (
+        bool(text)
+        and line.get('timestamp_status') != 'invalid'
+        and not text.lower().startswith('transcribe this audio')
+    )
 
 
 def transcript_text_impl(lines: list) -> str:
@@ -89,7 +98,11 @@ def transcript_text_impl(lines: list) -> str:
             continue
         speaker = f'{line["speaker"]}: ' if line.get('speaker') else ''
         rendered.append(f'[{float(line["start"]):.1f}s] {speaker}{str(line["text"]).strip()}')
-    return '\n'.join(rendered) if rendered else '[no speech detected]'
+    return (
+        '\n'.join(rendered)
+        if rendered
+        else '[transcription unavailable or empty; speech status unknown]'
+    )
 
 
 def _normalized(text: str) -> str:

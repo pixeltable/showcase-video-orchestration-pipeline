@@ -27,8 +27,9 @@ GEMINI_FILE_POLL_SEC = 2.0
 _logger = logging.getLogger(__name__)
 # Perception calls (keyframe captions, transcription) need no reasoning; thinking tokens bill as
 # output. Answer-writing calls keep the model's default thinking.
-NO_THINKING = {'thinking_config': {'thinking_budget': 0}}
-LOW_MEDIA_RESOLUTION = {'media_resolution': 'MEDIA_RESOLUTION_LOW'}
+ANSWER_CONFIG = {'max_output_tokens': 4096}
+NO_THINKING = {**ANSWER_CONFIG, 'thinking_config': {'thinking_budget': 0}}
+LOW_MEDIA_RESOLUTION = {**ANSWER_CONFIG, 'media_resolution': 'MEDIA_RESOLUTION_LOW'}
 
 
 def _gemini_client():
@@ -78,9 +79,7 @@ async def transcribe_response(
     finally:
         # A cleanup failure must never erase a paid response and trigger another model call.
         try:
-            await asyncio.wait_for(
-                client.aio.files.delete(name=uploaded.name), timeout=30.0
-            )
+            await asyncio.wait_for(client.aio.files.delete(name=uploaded.name), timeout=30.0)
         except Exception as exc:
             _logger.warning('Could not delete temporary Gemini file %s: %s', uploaded.name, exc)
 

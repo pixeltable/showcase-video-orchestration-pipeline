@@ -19,6 +19,8 @@ TRANSCRIBE_PROMPT = (
     'Return one line per utterance in this format:\n'
     '[mm:ss] Speaker N: spoken text\n'
     'Use Speaker 1, Speaker 2, etc. Do not include any other commentary.'
+    ' Transcribe only intelligible spoken words. A tone, ringing, music, or silence is not '
+    'speech. If there are no intelligible spoken words, return an empty response.'
 )
 
 

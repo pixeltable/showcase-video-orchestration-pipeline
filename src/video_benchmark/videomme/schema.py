@@ -47,7 +47,8 @@ def build_models(config: BenchmarkConfig, plan: PathPlan) -> type:
     model = config.gemini_model
     definition = provenance.pipeline_identity(
         {**config_manifest_dict(config), 'annotation_revision': HF_REVISION},
-        plan.enabled(), pxt.__version__
+        plan.enabled(),
+        pxt.__version__,
     )
 
     class Videos(TableModel, name='videos'):
@@ -172,7 +173,9 @@ def build_models(config: BenchmarkConfig, plan: PathPlan) -> type:
         answer: pxt.String
         question_prompt = mcq.question_block(question, options)
         if plan.native:
-            native_response = generate_content([video, question_prompt], model=model)
+            native_response = generate_content(
+                [video, question_prompt], model=model, config=providers.ANSWER_CONFIG
+            )
             native_raw = providers.gemini_text(native_response)
             native_letter = scoring.extract_letter(native_raw)
             native_correct = scoring.is_correct(native_letter, answer)
@@ -206,7 +209,9 @@ def build_models(config: BenchmarkConfig, plan: PathPlan) -> type:
             orch_contents = evidence.synthesis_contents(
                 orch_prompt, orch_attached, frame_images(video_id)
             )
-            orch_response = generate_content(orch_contents, model=model)
+            orch_response = generate_content(
+                orch_contents, model=model, config=providers.ANSWER_CONFIG
+            )
             orch_raw = providers.gemini_text(orch_response)
             orch_letter = scoring.extract_letter(orch_raw)
             orch_correct = scoring.is_correct(orch_letter, answer)
@@ -240,6 +245,7 @@ def build_models(config: BenchmarkConfig, plan: PathPlan) -> type:
             nova_response = converse(
                 providers.nova_video_messages(nova_video, question_prompt),
                 model_id=config.nova_model_id,
+                inference_config={'maxTokens': 4096},
             )
             nova_raw = providers.nova_text(nova_response)
             nova_letter = scoring.extract_letter(nova_raw)

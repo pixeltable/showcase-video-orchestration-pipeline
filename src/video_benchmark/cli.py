@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
 
+from video_benchmark import admission
 from video_benchmark import config as configuration
 from video_benchmark.config import PROJECT_ROOT, load_config
 from video_benchmark.paths import PATH_LABELS, apply_skip_flags, parse_paths
@@ -42,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--skip-oss', action='store_true', help='Drop Path 3')
     parser.add_argument('--skip-fal', action='store_true', help='Drop Path 4')
     parser.add_argument('--skip-nova', action='store_true', help='Drop Path 5')
+    admission.add_arguments(parser)
     return parser.parse_args()
 
 
@@ -54,6 +57,7 @@ def main() -> int:
             paths, skip_oss=args.skip_oss, skip_fal=args.skip_fal, skip_nova=args.skip_nova
         )
         config = load_config(paths)
+        admission.validate_arguments(args)
     except ValueError as exc:
         print(f'Error: {exc}', file=sys.stderr)
         return 1
@@ -76,30 +80,65 @@ def main() -> int:
     if not plan_paths(config, paths).enabled():
         print('Error: none of the selected paths have credentials.', file=sys.stderr)
         return 1
+    query = args.query or config.default_query
+    if len(query) > 4000 or config.vision_sample_keyframes > 64:
+        print(
+            'Error: query must fit 4000 characters and frame preparation must fit 64 frames.',
+            file=sys.stderr,
+        )
+        return 1
     try:
         video_path = ensure_sample_video(Path(args.video) if args.video else None)
+        seconds = admission.inspect_media(
+            [str(video_path)],
+            max_seconds=args.max_media_seconds,
+            require_audio=plan_paths(config, paths).modular,
+        )
     except (OSError, ValueError) as exc:
         print(f'Error: {exc}', file=sys.stderr)
         return 1
 
-    if args.reset:
-        print('Dropping the video_benchmarking catalog ...')
-        reset_catalog()
-    try:
-        plan = apply_schema(config, paths)
-    except CatalogSchemaMismatch as exc:
-        print(f'Error: {exc}', file=sys.stderr)
-        return 1
+    if args.preflight:
+        print(
+            json.dumps(
+                {
+                    'paths': plan_paths(config, paths).enabled(),
+                    'maximum_duration_sec': seconds,
+                    'budget_usd': args.budget_usd,
+                    'max_attempts': args.max_attempts,
+                    'model_output_cap_tokens': admission.MAX_OUTPUT_TOKENS,
+                    'provider_access': 'not tested; credentials configured',
+                },
+                indent=2,
+            )
+        )
+        return 0
 
-    query = args.query or config.default_query
     export_base = Path(args.export) if args.export else PROJECT_ROOT / 'results'
     any_failed = False
-    for _ in range(args.repeats):
-        run_id, failed = run_benchmark(plan, video_path, query)
-        any_failed = any_failed or bool(failed)
-        out = export_run(run_id, plan, config, video_path, export_base)
-        print((out / 'REPORT.md').read_text())
-        print(f'Exported {out}')
+    ledger = admission.AttemptLedger(
+        Path(args.ledger) if args.ledger else PROJECT_ROOT / 'results' / 'provider-ledger.sqlite3',
+        budget_usd=args.budget_usd,
+        max_attempts=args.max_attempts,
+    )
+    try:
+        with admission.provider_session(
+            ledger, seconds=seconds, bedrock_enabled=plan_paths(config, paths).nova
+        ):
+            if args.reset:
+                print('Dropping the video_benchmarking catalog ...')
+                reset_catalog()
+            plan = apply_schema(config, paths)
+            for _ in range(args.repeats):
+                run_id, failed = run_benchmark(plan, video_path, query)
+                any_failed = any_failed or bool(failed)
+                out = export_run(run_id, plan, config, video_path, export_base)
+                admission.export_snapshot(ledger, out)
+                print((out / 'REPORT.md').read_text())
+                print(f'Exported {out}; durable attempt ledger: {ledger.path}')
+    except (CatalogSchemaMismatch, admission.AdmissionError) as exc:
+        print(f'Error: {exc}', file=sys.stderr)
+        return 1
     return 1 if any_failed else 0
 
 

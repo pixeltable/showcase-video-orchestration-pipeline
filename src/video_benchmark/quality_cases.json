@@ -1,0 +1,50 @@
+[
+  {
+    "case_id": "recorded-tone-synthesis-hallucination",
+    "source": "docs/validation/2026-10-09.json; run 20261009T234908Z-71c602, path 2",
+    "duration_sec": 4,
+    "audio_present": true,
+    "labels": {"speech_present": false, "transition": "hard_cut"},
+    "response": {"candidates": [{"content": {"parts": [{"text": "At the start of the video, Speaker 1 makes a sound, saying \"mm.\", while the screen is completely black. The visual then remains dark for a period before gradually fading to a plain white background. The video concludes on this static, bright white screen, devoid of any discernible objects or text."}]}}]},
+    "expected": {"completion": "complete", "correctness": "fail", "findings": ["unsupported_speech", "unsupported_transition"]}
+  },
+  {
+    "case_id": "synthetic-truthful-tone-description",
+    "source": "Authored boundary case for the generated local_demo.py fixture; not a provider measurement",
+    "duration_sec": 4,
+    "audio_present": true,
+    "labels": {"speech_present": false, "transition": "hard_cut"},
+    "response": {"candidates": [{"content": {"parts": [{"text": "A continuous tone accompanies a hard cut from dark to bright at two seconds."}]}}]},
+    "expected": {"completion": "complete", "correctness": "pass", "findings": []}
+  },
+  {
+    "case_id": "synthetic-refusal",
+    "duration_sec": 4,
+    "audio_present": true,
+    "labels": {"speech_present": false},
+    "response": {"candidates": null, "prompt_feedback": {"block_reason": "PROHIBITED_CONTENT"}},
+    "expected": {"completion": "refusal", "correctness": "not_evaluated", "findings": []}
+  },
+  {
+    "case_id": "synthetic-missing-audio",
+    "duration_sec": 4,
+    "audio_present": false,
+    "response": null,
+    "expected": {"completion": "not_called", "correctness": "not_evaluated", "findings": ["missing_audio"]}
+  },
+  {
+    "case_id": "synthetic-empty-transcription-is-unknown",
+    "duration_sec": 4,
+    "audio_present": true,
+    "response": {"candidates": []},
+    "expected": {"completion": "empty", "correctness": "not_evaluated", "findings": []}
+  },
+  {
+    "case_id": "synthetic-invalid-time-evidence",
+    "duration_sec": 4,
+    "audio_present": true,
+    "labels": {"speech_present": false},
+    "response": {"candidates": [{"content": {"parts": [{"text": "[nan] Speaker 1: mm.\n[99:00] Speaker 1: mm.\n[-1] Speaker 1: mm."}]}}]},
+    "expected": {"completion": "complete", "correctness": "fail", "findings": ["invalid_timestamp", "out_of_range_timestamp", "unsupported_speech"]}
+  }
+]

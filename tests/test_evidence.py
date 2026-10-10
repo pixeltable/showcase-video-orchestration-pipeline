@@ -57,7 +57,7 @@ def test_merge_and_render_transcript():
     )
     # Short early lines are kept; only the model echoing its instructions is dropped.
     assert rendered == '[0.5s] Speaker 1: Hi'
-    assert transcript_text_impl([]) == '[no speech detected]'
+    assert transcript_text_impl([]) == '[transcription unavailable or empty; speech status unknown]'
 
 
 def test_dedupe_drops_empty_and_repeated_captions():

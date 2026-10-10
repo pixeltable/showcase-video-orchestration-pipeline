@@ -108,7 +108,9 @@ def build_models(config: BenchmarkConfig, plan: PathPlan) -> type:
         definition_id = definition
         duration_sec = get_duration(video)
         if plan.native:
-            native_response = generate_content([video, prompts.native_prompt(query)], model=model)
+            native_response = generate_content(
+                [video, prompts.native_prompt(query)], model=model, config=providers.ANSWER_CONFIG
+            )
             native_answer = providers.gemini_text(native_response)
             native_usage = pricing.gemini_usage(native_response)
             native_cost = pricing.gemini_cost(native_usage, model)
@@ -137,6 +139,7 @@ def build_models(config: BenchmarkConfig, plan: PathPlan) -> type:
             nova_response = converse(
                 providers.nova_video_messages(nova_video, prompts.native_prompt(query)),
                 model_id=config.nova_model_id,
+                inference_config={'maxTokens': 4096},
             )
             nova_answer = providers.nova_text(nova_response)
             nova_usage = pricing.nova_usage(nova_response)
@@ -282,7 +285,9 @@ def build_models(config: BenchmarkConfig, plan: PathPlan) -> type:
             gemini_contents = evidence.synthesis_contents(
                 gemini_prompt, gemini_attached, frame_images(run_id)
             )
-            gemini_response = generate_content(gemini_contents, model=model)
+            gemini_response = generate_content(
+                gemini_contents, model=model, config=providers.ANSWER_CONFIG
+            )
             gemini_answer = providers.gemini_text(gemini_response)
             gemini_synthesis_usage = pricing.gemini_usage(gemini_response)
             gemini_synthesis_cost = pricing.gemini_cost(gemini_synthesis_usage, model)

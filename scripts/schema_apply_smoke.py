@@ -20,6 +20,8 @@ VIDEOMME_PATH_SETS = ({'1', '2'}, {'1', '1L', '2', '3', '5'})
 def main() -> int:
     home = Path(tempfile.mkdtemp(prefix='pxt-apply-'))
     os.environ['PIXELTABLE_HOME'] = str(home)
+    os.environ['PIXELTABLE_PGDATA'] = str(home / 'pgdata')
+    os.environ.pop('PIXELTABLE_DB_CONNECT_STR', None)
     os.environ['ENABLE_FAL'] = os.environ['ENABLE_NOVA'] = '1'
     print(f'PIXELTABLE_HOME={home}')
 

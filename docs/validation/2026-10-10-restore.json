@@ -1,0 +1,81 @@
+{
+  "validation": "isolated cold backup and same-path restore",
+  "procedure_and_provenance": {
+    "started_at": "2026-10-10T19:10:13.700241+00:00",
+    "procedure": "Stop writer database normally; copy quiescent complete home and external media; quarantine originals; restore both to original paths; verify in a new process; scoped-refresh second request; stop restored database normally",
+    "git_commit": "b5edd856fafbef3d78ecced403b3b27bacfc418d",
+    "source_sha256": {
+      "local_demo.py": "433abd1a321314a6b798eb651c78aad586739354536d1062bf77ed304f7e5444",
+      "local_demo_rules.py": "d9d94c0ca48e80540a7bad934f9c3b59f30c5609d853e250274ebd8c687f5ca3",
+      "provenance.py": "1409e7e633f66d1cf72fe6733db13c2beddd5cf80896cf8b95f9061efa4d8499",
+      "local_graph.py": "3534a85e023b96a733278d295f9ebaf614e75a9dc4615cff97484652b48fa185"
+    },
+    "provider_calls": 0,
+    "provider_credentials_removed_from_children": true,
+    "same_paths_restore": true,
+    "writer_exit_code": 0,
+    "source_dirty": true,
+    "setup_correction": "Initial isolated source snapshot omitted concurrently added local_graph module; no graph/provider work ran. Included frozen shared graph and retried setup.",
+    "backup_file_count": 1343,
+    "backup_bytes": 48542516,
+    "writer_stopped_before_copy": true,
+    "originals_quarantined_before_restore": true,
+    "restore_exit_code": 0,
+    "status": "passed",
+    "finished_at": "2026-10-10T19:11:03.152653+00:00",
+    "restored_database_stopped": true
+  },
+  "observations": {
+    "pixeltable_version": "0.7.16",
+    "snapshot_counts": {
+      "clips": 1,
+      "frames": 4,
+      "audio_segments": 2,
+      "requests": 2
+    },
+    "external_source": {
+      "sha256": "b425d552e7427a6b2f790a1aff8d1cfa31e3b3d9e30e8d1ad4bd7644f93ae1e2",
+      "bytes": 28190
+    },
+    "stored_audio": {
+      "sha256": "aedd0b31c6c48e94d9b37446a935ffa7b3f7caea26fa4a73ca890ac74371844a",
+      "bytes": 63213
+    },
+    "before": {
+      "first": {
+        "decision": "2 frames meet the review policy",
+        "evidence_frames": 2
+      },
+      "second": {
+        "decision": "4 frames meet the review policy",
+        "evidence_frames": 4
+      }
+    },
+    "after": {
+      "first": {
+        "decision": "2 frames meet the review policy",
+        "evidence_frames": 2
+      },
+      "second": {
+        "decision": "2 frames meet the review policy",
+        "evidence_frames": 2
+      }
+    },
+    "preparations_after_restore": [],
+    "evaluations_after_restore": [
+      "second"
+    ],
+    "snapshot_equal_before_refresh": true,
+    "source_frame_audio_hashes_unchanged": true,
+    "test_database_stopped": true,
+    "original_quarantine_database_stopped": true,
+    "platform": "macOS-26.6.1-arm64-arm-64bit",
+    "limits": [
+      "same absolute source and home paths on one machine",
+      "Pixeltable0.7.16 and matching application UDFs",
+      "no live-backup/PITR/cross-version migration",
+      "no paid responses/attempt-ledger/upload-receipt restore tested",
+      "no public hosting/multiwriter/recovery guarantees"
+    ]
+  }
+}

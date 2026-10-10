@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pixeltable evidence workspace</title>
+  <style>
+    :root{color-scheme:light;--bg:#fcfcfb;--panel:#fff;--text:#0b0b0b;--muted:#52514e;--accent:#185da8;--line:#d5d4d0;--warning:#80520c;--error:#9e302c}
+    @media(prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#1a1a19;--panel:#232322;--text:#fff;--muted:#c3c2b7;--accent:#86baff;--line:#585852;--warning:#ffcf80;--error:#ffa7a0}}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;line-height:1.5}
+    header,main,footer{max-width:1160px;margin:auto;padding:24px}header{padding-top:40px}h1{font-size:clamp(1.8rem,4vw,2.5rem);letter-spacing:-.025em;line-height:1.15;margin:0 0 12px}h2{font-size:1.3rem;margin:0 0 12px}h3{font-size:1.05rem;margin:0 0 8px}p{max-width:72ch;margin:0 0 12px}.muted,footer{color:var(--muted)}main{display:grid;grid-template-columns:1.05fr 1fr;gap:40px;padding-top:8px}section{margin-bottom:28px}video{display:block;width:100%;height:190px;object-fit:contain;background:#101010;border-radius:12px}audio{width:100%;margin-top:12px}button,input{font:inherit}button{min-height:44px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:var(--panel);padding:8px 16px;cursor:pointer}button:hover{filter:brightness(.88)}button:disabled{opacity:.55;cursor:wait}.secondary{background:transparent;color:var(--accent)}label{display:block;font-weight:600;margin-bottom:8px}.rule{display:flex;align-items:center;gap:12px}input[type=range]{accent-color:var(--accent);width:100%;min-height:44px;cursor:pointer}output{min-width:3ch;font-variant-numeric:tabular-nums}.frames{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}figure{margin:0;min-width:0}figure img{width:100%;aspect-ratio:4/3;border:1px solid var(--line);border-radius:8px;image-rendering:auto}figcaption{font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}.excluded img{opacity:.3}.excluded figcaption{color:var(--warning)}.request{border-top:1px solid var(--line);padding:20px 0}.request-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.stale{color:var(--warning)}.snapshot{margin:10px 0 16px;padding-left:20px;min-height:42px;font-size:.95rem}.snapshot li{font-variant-numeric:tabular-nums}.ledger{width:100%;border-collapse:collapse;font-size:.9rem}.ledger th,.ledger td{padding:10px 0;border-bottom:1px solid var(--line);text-align:left}.ledger td{text-align:right;font-variant-numeric:tabular-nums}.status{min-height:1.5em;margin-top:12px}.error{color:var(--error)}details{border-top:1px solid var(--line);padding-top:16px}summary{cursor:pointer;min-height:44px;color:var(--accent)}:focus-visible{outline:3px solid var(--accent);outline-offset:4px}::selection{background:var(--accent);color:var(--bg)}a{color:var(--accent);text-underline-offset:.2em}input{caret-color:var(--accent)}*{scrollbar-color:var(--muted) var(--bg)}@media(max-width:720px){header,main,footer{padding-inline:16px}main{grid-template-columns:1fr;gap:4px}header{padding-top:28px}video{height:170px}.frames{gap:8px}button{width:100%}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Evidence you can change.</h1>
+    <p>One clip, prepared once. Change which frames qualify, then refresh a saved request to use the new evidence.</p>
+    <p class="muted">Live local Pixeltable catalog · generated media · no keys or provider calls</p>
+  </header>
+  <main>
+    <div>
+      <section aria-labelledby="source-title">
+        <h2 id="source-title">Source and preparation</h2>
+        <video controls preload="metadata" src="/media/clip" aria-label="Four-second generated clip: dark then bright, with a continuous tone"></video>
+        <audio controls preload="metadata" src="/media/audio" aria-label="Audio extracted by Pixeltable"></audio>
+        <p class="muted">4 seconds · a hard cut from dark to bright · a 440 Hz tone, without speech</p>
+      </section>
+      <section aria-labelledby="rule-title">
+        <h2 id="rule-title">Your review rule</h2>
+        <label for="brightness">Minimum frame brightness</label>
+        <div class="rule"><input id="brightness" type="range" min="0" max="255" value="0"><output for="brightness" id="value">0</output></div>
+        <button id="apply">Apply rule</button>
+        <div id="frames" class="frames" aria-label="Four prepared keyframes"></div>
+        <p id="selection" class="muted"></p>
+        <p id="status" class="status" role="status" aria-live="polite">Loading the catalog…</p>
+      </section>
+    </div>
+    <div>
+      <section aria-labelledby="requests-title">
+        <h2 id="requests-title">Saved request evidence</h2>
+        <p class="muted">These are stored query results. Applying a rule changes the available frames; refresh a request to update its saved evidence and decision.</p>
+        <div id="requests"></div>
+      </section>
+      <section aria-labelledby="reuse-title">
+        <h2 id="reuse-title">What actually ran</h2>
+        <table class="ledger"><tbody id="counts"></tbody></table>
+        <p id="integrity" class="muted" style="margin-top:12px"></p>
+      </section>
+      <details><summary>Inspect the lesson</summary>
+        <p>The source row produces frames and audio through iterator views. Two request rows materialize a query over eligible frames. A scoped <code>recompute_columns('evidence')</code> refresh also reevaluates that request's decision.</p>
+        <p>This workspace serves a temporary catalog on your computer. Closing its process removes that catalog. The CLI lesson, extension guide, and deployment boundaries are in the repository.</p>
+      </details>
+    </div>
+  </main>
+  <footer>Pixeltable evidence workspace · <span id="version"></span> · no uploaded or recorded provider answers</footer>
+  <script>
+    const $=id=>document.getElementById(id);let busy=false;
+    function node(tag,text,cls){const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el}
+    function render(data){
+      $('brightness').value=data.minimum_brightness;$('value').textContent=data.minimum_brightness;
+      $('version').textContent=`SDK ${data.pixeltable_version}`;$('frames').replaceChildren();
+      data.frames.forEach((frame,index)=>{const fig=node('figure',undefined,frame.eligible?'':'excluded');const img=node('img');img.src=`/media/frame-${index}`;img.alt=`Frame at ${frame.position_sec.toFixed(1)} seconds, brightness ${frame.brightness.toFixed(0)}`;fig.append(img,node('figcaption',`${frame.position_sec.toFixed(1)}s · ${frame.eligible?'eligible':'excluded'}`));$('frames').append(fig)});
+      $('selection').textContent=`${data.frames.filter(f=>f.eligible).length} of 4 prepared frames qualify under the current rule.`;
+      $('requests').replaceChildren();data.requests.forEach(request=>{
+        const article=node('article',undefined,'request');const head=node('div',undefined,'request-head');head.append(node('h3',`${request.request_id==='first'?'First':'Second'} request`),node('span',request.stale?'Stale snapshot':'Current snapshot',request.stale?'stale':'muted'));
+        const list=node('ul',undefined,'snapshot');request.evidence.forEach(frame=>list.append(node('li',`${frame.position_sec.toFixed(1)}s · brightness ${frame.brightness.toFixed(0)}`)));if(!request.evidence.length)list.append(node('li','No eligible frames in this saved snapshot.'));
+        const button=node('button',`Refresh ${request.request_id} request`,request.stale?'':'secondary');button.disabled=busy;button.onclick=()=>mutate('/api/refresh',{request_id:request.request_id},`Refreshed the ${request.request_id} request. The other request keeps its saved evidence.`);
+        article.append(head,node('p',request.decision),list,button);$('requests').append(article);
+      });
+      $('counts').replaceChildren();const rows=[['Prepared frames',data.prepared_frames],['Audio segments',data.audio_segments.length],['First request evaluations',data.requests[0].evaluations],['Second request evaluations',data.requests[1].evaluations],['Provider calls',data.provider_calls]];rows.forEach(([label,value])=>{const tr=node('tr');tr.append(node('th',label),node('td',String(value)));$('counts').append(tr)});
+      $('integrity').textContent=data.source_and_preparation_unchanged?'Source, thumbnails, and audio hashes match the initial preparation.':'Preparation changed. Inspect the catalog before continuing.';
+    }
+    function setBusy(value){busy=value;document.querySelectorAll('button,input').forEach(el=>el.disabled=value);$('apply').textContent=value?'Working…':'Apply rule'}
+    async function api(path,options){const response=await fetch(path,options);const data=await response.json();if(!response.ok)throw Error(data.detail||'Could not read the catalog.');return data}
+    async function mutate(path,payload,message){if(busy)return;setBusy(true);$('status').className='status';$('status').textContent='Updating the local catalog…';try{render(await api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}));$('status').textContent=message}catch(error){$('status').className='status error';$('status').textContent=`${error.message} Try the action again.`}finally{setBusy(false)}}
+    $('brightness').oninput=()=>{$('value').textContent=$('brightness').value};$('apply').onclick=()=>mutate('/api/policy',{minimum_brightness:Number($('brightness').value)},'Rule applied. Saved requests keep their evidence until you refresh them.');
+    api('/api/state').then(data=>{render(data);$('status').textContent='Try a minimum brightness of 128, then refresh one request.'}).catch(error=>{$('status').className='status error';$('status').textContent=`${error.message} Reload the workspace.`});
+  </script>
+</body>
+</html>
