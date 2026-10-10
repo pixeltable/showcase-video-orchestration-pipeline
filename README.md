@@ -10,7 +10,7 @@ Start with a local media review rule: prepare frames and audio once, reuse the f
 
 The optional benchmark then asks a measurable question: answer a video question by sending the whole video to Gemini (**native**), or by captioning keyframes, transcribing audio, and answering from saved evidence (**orchestrated**). The same Gemini model writes both answers. Local models, fal, and Bedrock are additional comparison paths.
 
-**Validated SDK:** Pixeltable **0.7.15**, the latest stable PyPI release checked on 2026-10-08. The committed experiments used 0.7.11; upgrading the application does not turn those recordings into new experiments.
+**Validated SDK:** Pixeltable **0.7.16**, the latest stable PyPI release checked on 2026-10-09. The committed experiments used 0.7.11; upgrading the application does not turn those recordings into new experiments. A separate [live smoke record](docs/validation/2026-10-09.json) covers all five cloud paths on a generated four-second clip; it verifies execution and accounting, with an explicit transcription hallucination recorded.
 
 **Paper:** [docs/paper/paper.md](docs/paper/paper.md) · **Showcase:** [docs/showcase.html](docs/showcase.html) · **Golden run:** [results/golden/](results/golden/) · **How it works:** [docs/WORKFLOW.md](docs/WORKFLOW.md)
 

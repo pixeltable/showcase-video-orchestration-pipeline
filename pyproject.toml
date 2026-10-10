@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 # Base install runs Paths 1, 1L, and 2 (Gemini).
 dependencies = [
-    "pixeltable==0.7.15",
+    "pixeltable==0.7.16",
     "google-genai>=2.0",
     "numpy>=2.0",
     "pillow>=10.1",

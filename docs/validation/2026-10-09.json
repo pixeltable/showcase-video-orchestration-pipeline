@@ -1,0 +1,353 @@
+{
+  "scope": {
+    "pixeltable": "0.7.16",
+    "generated_fixture_duration_sec": 4,
+    "fixture_speech": false,
+    "fixture_audio": "440 Hz tone",
+    "fixture_video": "dark then bright uniform frames",
+    "fixture_sha256": "b425d552e7427a6b2f790a1aff8d1cfa31e3b3d9e30e8d1ad4bd7644f93ae1e2",
+    "provider_substitutes": false,
+    "separate_temporary_catalogs": true,
+    "temporary_catalogs_removed": true,
+    "existing_catalogs_changed": false,
+    "purpose": "Transport, stored responses, usage and cost smoke check; not a quality or performance benchmark"
+  },
+  "access": {
+    "gemini_models": {
+      "gemini-2.5-flash": {
+        "accessible": true,
+        "supported_actions": [
+          "generateContent",
+          "countTokens",
+          "createCachedContent",
+          "batchGenerateContent"
+        ]
+      },
+      "gemini-2.5-flash-lite": {
+        "accessible": true,
+        "supported_actions": [
+          "generateContent",
+          "countTokens",
+          "createCachedContent",
+          "batchGenerateContent"
+        ]
+      }
+    },
+    "aws_identity": {
+      "authenticated": true
+    },
+    "nova": {
+      "model_id": "amazon.nova-pro-v1:0",
+      "listed": true,
+      "input_modalities": [
+        "TEXT",
+        "IMAGE",
+        "VIDEO"
+      ],
+      "availability": {
+        "authorizationStatus": "AUTHORIZED",
+        "entitlementAvailability": "AVAILABLE",
+        "agreementAvailability": {
+          "status": "AVAILABLE"
+        },
+        "regionAvailability": "AVAILABLE"
+      }
+    },
+    "huggingface": {
+      "authenticated": true
+    },
+    "hf_gates": {
+      "pyannote/speaker-diarization-3.1": {
+        "config_accessible": true
+      },
+      "pyannote/segmentation-3.0": {
+        "config_accessible": true
+      }
+    },
+    "fal": {
+      "live_invocation_succeeded": true
+    }
+  },
+  "runs": [
+    {
+      "run_id": "20261009T234908Z-71c602",
+      "paths": [
+        "1",
+        "1L",
+        "2"
+      ],
+      "elapsed_sec": 15.133897625142708,
+      "failed_columns": [],
+      "configuration": {
+        "gemini_model": "gemini-2.5-flash",
+        "vision_sample_keyframes": 4,
+        "frame_select_budget": 3,
+        "gemini_synth_max_images": 2,
+        "scene_detect_threshold": 20.0,
+        "oss_vision_repo_id": "unsloth/Qwen2.5-VL-3B-Instruct-GGUF",
+        "oss_vision_repo_filename": "Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf",
+        "oss_vision_mmproj_repo_filename": "mmproj-F16.gguf",
+        "oss_vision_chat_format": "qwen2.5-vl",
+        "oss_synth_repo_id": "Qwen/Qwen2.5-7B-Instruct-GGUF",
+        "oss_synth_repo_filename": "qwen2.5-7b-instruct-q3_k_m.gguf",
+        "oss_synth_max_tokens": 2048,
+        "oss_frame_caption_max_chars": 240,
+        "oss_asr": "whisper",
+        "whisper_model": "small",
+        "whisperx_model": "small.en",
+        "whisperx_diarization_model": "pyannote/speaker-diarization-3.1",
+        "whisperx_min_speakers": 2,
+        "whisperx_num_speakers": null,
+        "enable_fal": false,
+        "enable_nova": false,
+        "nova_model_id": "amazon.nova-pro-v1:0",
+        "benchmark_tune_tag": null,
+        "default_query": "Summarize the main activities, speakers, and visual events in this video."
+      },
+      "versions": {
+        "pixeltable": "0.7.16",
+        "google-genai": "2.10.0",
+        "av": "18.0.0",
+        "scenedetect": "0.7",
+        "numpy": "2.2.6",
+        "boto3": "1.43.44",
+        "fal-client": "1.0.0",
+        "llama-cpp-python": "0.3.33",
+        "openai-whisper": "20250625",
+        "whisperx": "3.8.6",
+        "datasets": "5.0.0"
+      },
+      "provenance": {
+        "git_commit": "ee8f437803db55ba52a1895104b345f2d74d9bb9",
+        "git_dirty": true,
+        "source_sha256": "c8a32e6da7b9eb0df8ce7dbf91b1f28390ce6610d3054f20134dd4b7c51d487c",
+        "python_version": "3.12.7 | packaged by Anaconda, Inc. | (main, Oct  4 2024, 08:22:19) [Clang 14.0.6 ]",
+        "pixeltable_version": "0.7.16",
+        "video_identity": {
+          "sha256": "b425d552e7427a6b2f790a1aff8d1cfa31e3b3d9e30e8d1ad4bd7644f93ae1e2",
+          "bytes": 28190
+        },
+        "exported_utc": "2026-10-09T23:49:23Z"
+      },
+      "paths_result": {
+        "1": {
+          "answer_present": true,
+          "answer": "The video begins with a black screen as a continuous, high-pitched ringing sound starts. At 0:02, the screen abruptly changes from black to a solid light grey. The ringing sound persists without interruption for the remainder of the video.",
+          "cost_usd": 0.0015818,
+          "list_cost_usd": 0.0015818,
+          "response_accounted_cost_usd": 0.0015818,
+          "errors": {},
+          "usage": {
+            "input_tokens": 1517,
+            "cached_tokens": 0,
+            "output_tokens": 50,
+            "thinking_tokens": 364,
+            "input_by_modality": {
+              "TEXT": 71,
+              "AUDIO": 131,
+              "VIDEO": 1315
+            },
+            "cached_by_modality": {}
+          },
+          "stages": null
+        },
+        "1L": {
+          "answer_present": true,
+          "answer": "The video begins with a black screen accompanied by a continuous, high-pitched beeping sound. At 0:01, the screen abruptly brightens to a solid light grey/white color. The persistent, high-pitched beep continues throughout the remainder of the video. The visual remains bright grey until the end.",
+          "cost_usd": 0.0012863,
+          "list_cost_usd": 0.0012863,
+          "response_accounted_cost_usd": 0.0012863,
+          "errors": {},
+          "usage": {
+            "input_tokens": 557,
+            "cached_tokens": 0,
+            "output_tokens": 64,
+            "thinking_tokens": 347,
+            "input_by_modality": {
+              "TEXT": 71,
+              "AUDIO": 131,
+              "VIDEO": 355
+            },
+            "cached_by_modality": {}
+          },
+          "stages": null
+        },
+        "2": {
+          "answer_present": true,
+          "answer": "At the start of the video, Speaker 1 makes a sound, saying \"mm.\", while the screen is completely black. The visual then remains dark for a period before gradually fading to a plain white background. The video concludes on this static, bright white screen, devoid of any discernible objects or text.",
+          "cost_usd": 0.002996,
+          "list_cost_usd": 0.002996,
+          "response_accounted_cost_usd": 0.002996,
+          "errors": {},
+          "usage": null,
+          "stages": {
+            "captions": {
+              "calls": 4,
+              "failed_calls": 0,
+              "unknown_cost_calls": 0,
+              "empty_outputs": 0,
+              "cost_usd": 0.0008856999999999999,
+              "response_accounted_cost_usd": 0.0008856999999999999,
+              "list_cost_usd": 0.0008856999999999999,
+              "response_accounted_list_cost_usd": 0.0008856999999999999,
+              "usage": {
+                "input_tokens": 1444,
+                "cached_tokens": 0,
+                "output_tokens": 181,
+                "thinking_tokens": 0,
+                "input_by_modality": {
+                  "TEXT": 412,
+                  "IMAGE": 1032
+                },
+                "cached_by_modality": {}
+              }
+            },
+            "asr": {
+              "calls": 1,
+              "failed_calls": 0,
+              "unknown_cost_calls": 0,
+              "empty_outputs": 0,
+              "cost_usd": 0.0001735,
+              "response_accounted_cost_usd": 0.0001735,
+              "list_cost_usd": 0.0001735,
+              "response_accounted_list_cost_usd": 0.0001735,
+              "usage": {
+                "input_tokens": 176,
+                "cached_tokens": 0,
+                "output_tokens": 13,
+                "thinking_tokens": 0,
+                "input_by_modality": {
+                  "TEXT": 50,
+                  "AUDIO": 126
+                },
+                "cached_by_modality": {}
+              }
+            },
+            "synthesis": {
+              "calls": 1,
+              "failed_calls": 0,
+              "unknown_cost_calls": 0,
+              "cost_usd": 0.0019368,
+              "list_cost_usd": 0.0019368,
+              "usage": {
+                "input_tokens": 881,
+                "cached_tokens": 0,
+                "output_tokens": 61,
+                "thinking_tokens": 608,
+                "input_by_modality": {
+                  "TEXT": 365,
+                  "IMAGE": 516
+                },
+                "cached_by_modality": {}
+              },
+              "frames_in_evidence": 3,
+              "images_attached": 2
+            }
+          }
+        }
+      },
+      "observed_gemini_attempts": 8,
+      "observed_gemini_errors": 0,
+      "stored_response_sha256": "ebbae29dbe46ad7626cb242995136f4285c64e966f8ce1bfca79dc6f7e56cc66"
+    },
+    {
+      "run_id": "20261010T035933Z-d80a4d",
+      "paths": [
+        "4",
+        "5"
+      ],
+      "elapsed_sec": 11.825116167077795,
+      "failed_columns": [],
+      "configuration": {
+        "gemini_model": "gemini-2.5-flash",
+        "vision_sample_keyframes": 4,
+        "frame_select_budget": 3,
+        "gemini_synth_max_images": 2,
+        "scene_detect_threshold": 20.0,
+        "oss_vision_repo_id": "unsloth/Qwen2.5-VL-3B-Instruct-GGUF",
+        "oss_vision_repo_filename": "Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf",
+        "oss_vision_mmproj_repo_filename": "mmproj-F16.gguf",
+        "oss_vision_chat_format": "qwen2.5-vl",
+        "oss_synth_repo_id": "Qwen/Qwen2.5-7B-Instruct-GGUF",
+        "oss_synth_repo_filename": "qwen2.5-7b-instruct-q3_k_m.gguf",
+        "oss_synth_max_tokens": 2048,
+        "oss_frame_caption_max_chars": 240,
+        "oss_asr": "whisper",
+        "whisper_model": "small",
+        "whisperx_model": "small.en",
+        "whisperx_diarization_model": "pyannote/speaker-diarization-3.1",
+        "whisperx_min_speakers": 2,
+        "whisperx_num_speakers": null,
+        "enable_fal": true,
+        "enable_nova": true,
+        "nova_model_id": "amazon.nova-pro-v1:0",
+        "benchmark_tune_tag": null,
+        "default_query": "Summarize the main activities, speakers, and visual events in this video."
+      },
+      "versions": {
+        "pixeltable": "0.7.16",
+        "google-genai": "2.10.0",
+        "av": "18.0.0",
+        "scenedetect": "0.7",
+        "numpy": "2.2.6",
+        "boto3": "1.43.44",
+        "fal-client": "1.0.0",
+        "llama-cpp-python": "0.3.33",
+        "openai-whisper": "20250625",
+        "whisperx": "3.8.6",
+        "datasets": "5.0.0"
+      },
+      "provenance": {
+        "git_commit": "ee8f437803db55ba52a1895104b345f2d74d9bb9",
+        "git_dirty": true,
+        "source_sha256": "c8a32e6da7b9eb0df8ce7dbf91b1f28390ce6610d3054f20134dd4b7c51d487c",
+        "python_version": "3.12.7 | packaged by Anaconda, Inc. | (main, Oct  4 2024, 08:22:19) [Clang 14.0.6 ]",
+        "pixeltable_version": "0.7.16",
+        "video_identity": {
+          "sha256": "b425d552e7427a6b2f790a1aff8d1cfa31e3b3d9e30e8d1ad4bd7644f93ae1e2",
+          "bytes": 28190
+        },
+        "exported_utc": "2026-10-10T03:59:45Z"
+      },
+      "paths_result": {
+        "4": {
+          "answer_present": true,
+          "answer": "The video begins with a black screen. A telephone ring can be heard. The screen then changes to a light gray color as the phone continues to ring. The visual brightness increases from dark to light, and the sound is a continuous telephone ring.",
+          "cost_usd": 0.01,
+          "list_cost_usd": 0.01,
+          "response_accounted_cost_usd": 0.01,
+          "errors": {},
+          "usage": null,
+          "stages": null
+        },
+        "5": {
+          "answer_present": true,
+          "answer": "The video starts with a black screen and ends with a white screen.",
+          "cost_usd": 0.0019648,
+          "list_cost_usd": 0.0019648,
+          "response_accounted_cost_usd": 0.0019648,
+          "errors": {},
+          "usage": {
+            "input_tokens": 2396,
+            "output_tokens": 15
+          },
+          "stages": null
+        }
+      },
+      "observed_gemini_attempts": 0,
+      "observed_gemini_errors": 0,
+      "stored_response_sha256": "35f3717db850ac7f79a4aaf67f307f7e9f3e8b20e0426fb1f670bf074f650fe7"
+    }
+  ],
+  "known_response_accounted_cost_usd": 0.0178289,
+  "price_snapshot": "2026-09-28; Gemini and fal rates rechecked against official pricing pages on 2026-10-09",
+  "invoice_reconciled": false,
+  "quality_observation": "Path 2 ASR invented the utterance mm. from a tone; its synthesis repeated that utterance. Provider completion does not establish truthful transcription.",
+  "not_validated": [
+    "full 41-video research rerun",
+    "local GGUF path 3",
+    "production deployment",
+    "GPU execution",
+    "invoice reconciliation"
+  ]
+}

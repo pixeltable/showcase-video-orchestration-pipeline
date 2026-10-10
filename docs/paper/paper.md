@@ -234,7 +234,7 @@ python scripts/render_paper_tables.py
 ./scripts/build_paper.sh
 ```
 
-The recorded experiments used Pixeltable 0.7.11 and prices of 2026-09-28. Current source is validated on 0.7.15 and produces new experiments with source/media identities and a pinned annotation revision. Provider behavior and output are not guaranteed to match the recordings. To run new paid comparisons:
+The recorded experiments used Pixeltable 0.7.11 and prices of 2026-09-28. Current source is validated on 0.7.16 and produces new experiments with source/media identities and a pinned annotation revision. Provider behavior and output are not guaranteed to match the recordings. To run new paid comparisons:
 
 ```bash
 run-benchmark --paths 1,1L,2 --repeats 5 --export results/paper/pursuit
