@@ -4,12 +4,14 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
-Keep videos, frames, audio, and model responses in one [Pixeltable](https://github.com/pixeltable/pixeltable) catalog. Declare transformations and API calls in Python, query saved evidence, and choose when decisions refresh.
+Own your media, business rules, and orchestration in Python. [Pixeltable](https://github.com/pixeltable/pixeltable) keeps videos, frames, audio, and model responses in one queryable catalog; computed columns connect transformations, Python UDFs, and API calls.
 
-- Work with typed `Video`, `Image`, and `Audio` columns.
-- Prepare evidence once and reuse it across requests.
-- Inspect intermediate results and failures alongside the source.
-- Keep provider choices and business rules in your application.
+## What you'll learn
+
+- Use typed `Video`, `Image`, and `Audio` in the same graph.
+- Prepare frames and audio once, then reuse them across requests.
+- Change a rule and refresh one decision without repeating preparation.
+- Inspect stored evidence, model responses, and failures.
 
 ## Try it
 
@@ -27,23 +29,23 @@ Open the printed URL. Play the generated clip and inspect its frames and audio. 
 
 ![Local media workspace showing a rule change and one refreshed request](docs/images/evidence-workspace.jpg)
 
-The workspace binds to loopback and uses a temporary catalog. Ctrl-C stops it. Run `run-media-demo` for the terminal version.
+The workspace uses a temporary local catalog. Ctrl-C stops it; `run-media-demo` runs the terminal version.
 
 ## Change the pipeline
 
-The policy and refresh are ordinary SDK operations:
+Change a policy and refresh one saved request:
 
 ```python
 clips.update({'minimum_brightness': 128.0}, where=clips.clip_id == 'demo')
 requests.recompute_columns('evidence', where=requests.request_id == 'first')
 ```
 
-Start with [`local_graph.py`](src/video_benchmark/local_graph.py) and the [walkthrough](docs/WALKTHROUGH.md). The [provider graph](src/video_benchmark/schema.py) extends the pattern with captions, transcription, synthesis, and stored usage. [Run provider comparisons](docs/RUNNING.md) when you need them; cloud paths make paid calls.
+Start with [`local_graph.py`](src/video_benchmark/local_graph.py) and the [walkthrough](docs/WALKTHROUGH.md). The [provider graph](src/video_benchmark/schema.py) adds captions, transcription, synthesis, and stored usage. [Provider comparisons](docs/RUNNING.md) make paid calls.
 
 ## Explore the research
 
 The [recorded results](docs/RESULTS.md) compare native video with saved-evidence pipelines on Gemini 2.5. They used Pixeltable **0.7.11**; the current application targets **0.7.16**. Agentic video has not been measured here: see the [updated comparison protocol](docs/AGENTIC_VIDEO_COMPARISON.md).
 
-[Workflow and extension points](docs/WORKFLOW.md) · [Paper](docs/paper/paper.md) · [Deployment and recovery](docs/DEPLOYMENT.md) · [Validation](docs/REVIEW.md)
+[Workflow and extension points](docs/WORKFLOW.md) · [Paper](docs/paper/paper.md) · [Deployment and recovery](docs/DEPLOYMENT.md) · [Validation](docs/REVIEW.md) · [More example apps](https://github.com/pierrebrunelle/awesome-pixeltable-apps)
 
 Apache-2.0. Sample video: [Pixeltable docs](https://github.com/pixeltable/pixeltable/blob/main/docs/resources/The-Pursuit-of-Happiness.mp4). Video-MME annotations: academic use only.
