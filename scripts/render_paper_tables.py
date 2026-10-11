@@ -106,8 +106,8 @@ def render_tables(numbers: dict) -> dict[str, str]:
             decimal(rec['mean_cost_usd']), cache_label, decimal(per_correct),
         ])
     return {
-        'readme-clip': table(['Path', 'List price per answer', 'Clip phrase checks'], clip_rows),
-        'readme-videomme': table([
+        'results-clip': table(['Path', 'List price per answer', 'Clip phrase checks'], clip_rows),
+        'results-videomme': table([
             'Path', 'Accuracy [95% CI]', 'List price per question',
             'Response-accounted per question',
         ], readme_rows),
@@ -161,7 +161,10 @@ def main() -> int:
     args = parser.parse_args()
     tables = render_tables(json.loads((ROOT / 'docs/paper/numbers.json').read_text()))
     changed = []
-    for path, prefix in ((ROOT / 'README.md', 'readme-'), (ROOT / 'docs/paper/paper.md', 'paper-')):
+    for path, prefix in (
+        (ROOT / 'docs/RESULTS.md', 'results-'),
+        (ROOT / 'docs/paper/paper.md', 'paper-'),
+    ):
         selected = {name: body for name, body in tables.items() if name.startswith(prefix)}
         if update_document(path, selected, check=args.check):
             changed.append(str(path.relative_to(ROOT)))

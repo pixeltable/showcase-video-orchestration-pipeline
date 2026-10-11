@@ -30,7 +30,7 @@ def test_unknown_totals_and_no_correct_answers_remain_unknown():
     assert row.split('|')[5].strip() == 'n/a'
     assert '0.000' not in row
     assert 'n/a' in next(
-        line for line in tables['readme-videomme'].splitlines() if '2 Orchestrated' in line
+        line for line in tables['results-videomme'].splitlines() if '2 Orchestrated' in line
     )
 
 
