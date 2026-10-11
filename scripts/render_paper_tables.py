@@ -76,7 +76,7 @@ def render_tables(numbers: dict) -> dict[str, str]:
             f'{hits:g}/{checks} (mean)' if hits != rec['clip_hits_min'] else f'{hits:g}/{checks}',
         ])
 
-    readme_rows, accuracy_rows, cost_rows = [], [], []
+    comparison_rows, study_rows, accuracy_rows, cost_rows = [], [], [], []
     for path in ORDER:
         if path not in paths:
             continue
@@ -84,10 +84,13 @@ def render_tables(numbers: dict) -> dict[str, str]:
         name = label(path, vm.get('nova_model'))
         paper_name = name.replace('Amazon Nova', 'Nova')
         accuracy = interval(rec['accuracy'], rec['accuracy_ci95'], percent=True)
-        readme_rows.append([
+        comparison_rows.append([
             name, accuracy, decimal(rec['mean_list_cost_usd'], prefix='$'),
             decimal(rec['mean_cost_usd'], prefix='$'),
         ])
+        if path in ('1', '1L', '2'):
+            study_name = f'{name} (Pixeltable)' if path == '2' else name
+            study_rows.append([study_name, *comparison_rows[-1][1:]])
         strata = [rec['by_duration'].get(bucket, {}).get('accuracy')
                   for bucket in ('short', 'medium', 'long')]
         accuracy_rows.append([
@@ -106,11 +109,14 @@ def render_tables(numbers: dict) -> dict[str, str]:
             decimal(rec['mean_cost_usd']), cache_label, decimal(per_correct),
         ])
     return {
+        'readme-study': table([
+            'Approach', 'Accuracy [95% CI]', 'List / question', 'Accounted / question',
+        ], study_rows),
         'results-clip': table(['Path', 'List price per answer', 'Clip phrase checks'], clip_rows),
         'results-videomme': table([
             'Path', 'Accuracy [95% CI]', 'List price per question',
             'Response-accounted per question',
-        ], readme_rows),
+        ], comparison_rows),
         'paper-accuracy': table([
             'Path', 'Accuracy [95% CI]', 'Short', 'Medium', 'Long', 'Failed calls',
         ], accuracy_rows, (30, 20, 7, 7, 6, 13)) + (
@@ -162,6 +168,7 @@ def main() -> int:
     tables = render_tables(json.loads((ROOT / 'docs/paper/numbers.json').read_text()))
     changed = []
     for path, prefix in (
+        (ROOT / 'README.md', 'readme-'),
         (ROOT / 'docs/RESULTS.md', 'results-'),
         (ROOT / 'docs/paper/paper.md', 'paper-'),
     ):
